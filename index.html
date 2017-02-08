@@ -1,0 +1,171 @@
+<html>
+  <head>
+    <style>
+
+      body {
+        margin: 0px;
+        background: gainsboro;
+      }
+
+      #divMain {
+        display: flex;
+      }
+
+      #divGrid {
+        display: inline;
+      }
+
+      #divScroll {
+        position: absolute;
+        right: 0px;
+        height: 100%;
+      }
+
+      /*#scroll > div { 
+        display: inline-block;
+        background-color: yellow;
+      }*/
+
+      .scrollbar
+      {
+        margin-left: 30px;
+        float: left;
+        height: 100%;
+        overflow-y: scroll;
+        /*margin-bottom: 25px;*/
+      }
+
+      .force-overflow
+      {
+        min-height: 100000px;
+      }
+
+      #wrapper
+      {
+        text-align: center;
+        height: 100%;
+        margin: auto;
+      }
+
+      .divThumbnail
+      {
+        display: inline;
+        padding: 20px; /* also used in columnsToCreate calculation */
+      }
+
+      .divThumbnailRow
+      {
+        padding: 20px 0px;
+      }
+
+      .imgThumbnail
+      {
+        border-radius: 10%;
+      }
+
+    </style>
+  </head>
+  <body>
+
+    <div id="divMain">
+      
+      <div id="divGrid">
+        <button id="btnPrevious" onclick="decrementScroll()"><</button>
+        <button id="btnNext" onclick="incrementScroll()"/>></button>
+        <div id="divScrollPosition"></div>
+        <div id="divThumbnailGrid"></div>
+      </div>
+
+      <div id="divScroll">
+        <div id="wrapper">
+          <div class="scrollbar" id="scrollbar" onscroll="scrollHandler()">
+            <div class="force-overflow" id="scrollbarOverflower"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <script>
+      totalImageCount = 0;
+      divThumbnailPadding = 20; // Must match CSS .divThumbnail padding
+      thumbnailSize = 200;
+      var columnsToCreate = Math.floor((window.innerWidth - (2 * divThumbnailPadding)) / (thumbnailSize + (2 * divThumbnailPadding)))
+      var rowsToCreate = 3;
+
+      function scrollHandler() {
+        console.log(document.getElementById('scrollbar').scrollTop);
+        document.getElementById('divScrollPosition').textContent = document.getElementById('scrollbar').scrollTop;
+        updateThumbnailGridOffset();
+      }
+
+      function incrementScroll() {
+        document.getElementById('scrollbar').scrollTop += columnsToCreate;
+      }
+
+      function decrementScroll() {
+        document.getElementById('scrollbar').scrollTop -= columnsToCreate;   
+      }
+
+      function createThumbnailGrid() {
+        var divThumbnailGrid = document.getElementById('divThumbnailGrid');
+
+        for (row = 0; row < rowsToCreate; row++) {
+          var divRow = document.createElement("div");
+          divRow.className = "divThumbnailRow"
+          for (column = 0; column < columnsToCreate; column++) {
+            var divThumbnail = document.createElement("div");
+            divThumbnail.className = "divThumbnail";
+            divRow.appendChild(divThumbnail);
+
+            var anchorThumbnail = document.createElement("a");
+            divThumbnail.appendChild(anchorThumbnail);
+            
+            var imgThumbnail = document.createElement("img");
+            imgThumbnail.className = "imgThumbnail"
+            imgThumbnail.width = thumbnailSize;
+            imgThumbnail.height = thumbnailSize;
+            anchorThumbnail.appendChild(imgThumbnail);
+          }
+          divThumbnailGrid.appendChild(divRow); 
+        }
+      }
+
+      function configureScroll() {
+        var divOverflow = document.getElementById('scrollbarOverflower');
+
+        fetch('/getImageCount').then(function (response) {
+            return response.json();
+          }).then(function(data) {
+              totalImageCount = data;
+              divOverflow.style.minHeight = (window.innerHeight + totalImageCount) + 'px';
+              updateThumbnailGridOffset();
+            });
+      }
+
+      function updateThumbnailGridOffset() {
+        // Change offset only by a whole row at once.
+        var scrollTop = document.getElementById('scrollbar').scrollTop;
+        var scrollOffset = (scrollTop / totalImageCount) * totalImageCount;
+        var offset = Math.floor(scrollOffset / columnsToCreate) * columnsToCreate;
+        //var offset = Math.floor(scrollTop / columnsToCreate) * columnsToCreate;
+        console.log('offset = ' + offset);
+
+        var divThumbnailGrid = document.getElementById('divThumbnailGrid');
+        var imageAnchors = divThumbnailGrid.getElementsByTagName('a');
+
+        for (var i = 0; i < imageAnchors.length; ++i) {
+            imageAnchor = imageAnchors[i];
+            imageAnchor.href = "/getImage/?id=" + (1+i+offset);
+            var image = imageAnchor.getElementsByTagName('img')[0];
+            image.src = "/getThumbnail/?id=" + (1+i+offset);
+        }
+      }
+
+      createThumbnailGrid();
+      configureScroll();
+      //updateThumbnailGridOffset();
+      
+    </script>
+  <body>
+<html>
