@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -35,7 +36,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getImageCountHandler(w http.ResponseWriter, r *http.Request) {
+func getAssetCountHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	response := strconv.Itoa(db.GetLengthOfIndex())
 	w.Header().Set("Content-Length", strconv.Itoa(len(response)))
@@ -44,14 +45,14 @@ func getImageCountHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getImageHandler(w http.ResponseWriter, r *http.Request) {
+func getAssetHandler(w http.ResponseWriter, r *http.Request) {
 
 	id := r.URL.Query().Get("id")
 	index, err := strconv.ParseUint(id, 10, 64)
 	if err != nil {
 		log.Fatal(err)
 	}
-	imgPath := db.GetKeyByIndex(index)
+	imgPath := db.GetAssetPathByIndex(index)
 
 	f, err := os.Open(string(imgPath[:]))
 	if err != nil {
@@ -77,14 +78,34 @@ func getThumbnailHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.NotFound(w, r)
 		return
-		//log.Fatal(err)
 	}
-	buf := db.GetImageByIndex(index)
+	buf := db.GetThumbnailByIndex(index)
 
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Content-Length", strconv.Itoa(len(buf)))
 	if _, err := w.Write(buf); err != nil {
 		log.Println("unable to write image.")
+	}
+}
+
+func getExifDateTimeHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	index, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	dateTime := db.GetDateTimeByIndex(index)
+	buf, err := json.Marshal(map[string]time.Time{"datetime": dateTime})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Length", strconv.Itoa(len(buf)))
+	if _, err := w.Write(buf); err != nil {
+		log.Println("unable to write response.")
 	}
 }
 
@@ -127,14 +148,22 @@ func processPhoto(path string, info os.FileInfo, err error) error {
 		lowerPath := strings.ToLower(path)
 		if strings.HasSuffix(lowerPath, "jpg") || strings.HasSuffix(lowerPath, "jpeg") {
 
-			var imageDbKey = []byte(path)
-			if db.KeyExists(imageDbKey) {
+			// xyzzy - make key date and path for uniqueness even when photos have same datetime.
+			// "20160629-123001-/photos/myphoto.jpg"
+			//var imageDbKey = []byte(path)
+			datetime := getExifDateTime(path)
+			assetDbKey := []byte(strings.Join([]string{datetime.String(), path}, "#"))
+
+			if db.KeyExists(assetDbKey) {
 				fmt.Printf("Already in database: %s\n", path)
 				return
 			}
 			fmt.Println(path)
-			datetime := getExifDateTime(path)
-			storeThumbnail(imageDbKey, path, datetime)
+
+			// xyzzy remove datetime, shouldn't need to pass it to storeThumbnail now assetDbKey includes datetime.
+			//datetime := getExifDateTime(path)
+
+			storeThumbnail(assetDbKey, path, datetime)
 		}
 	}(path)
 
@@ -174,7 +203,7 @@ func getExifDateTime(path string) time.Time {
 	return tm
 }
 
-func storeThumbnail(imageDbKey []byte, path string, datetime time.Time) error {
+func storeThumbnail(assetDbKey []byte, path string, dateTime time.Time) error {
 	// file, err := os.Open(path)
 	// if err != nil {
 	// 	log.Fatal(err)
@@ -210,8 +239,9 @@ func storeThumbnail(imageDbKey []byte, path string, datetime time.Time) error {
 	// write new image to file
 	//buf := new(bytes.Buffer)
 	//jpeg.Encode(buf, thumbnail, nil)
-	//db.PutImage(imageDbKey, datetime, buf.Bytes())
-	db.PutImage(imageDbKey, datetime, thumbnail)
+	//db.PutImage(assetDbKey, datetime, buf.Bytes())
+
+	db.PutAsset(assetDbKey, []byte(path), thumbnail, dateTime)
 
 	return nil
 }
@@ -232,12 +262,13 @@ func main() {
 
 	db.CreateIndex()
 
-	fmt.Printf("Starting version: 5\n")
+	fmt.Printf("Starting version: 6\n")
 
 	http.HandleFunc("/", rootHandler)
 	http.HandleFunc("/getThumbnail/", getThumbnailHandler)
-	http.HandleFunc("/getImage/", getImageHandler)
-	http.HandleFunc("/getImageCount/", getImageCountHandler)
+	http.HandleFunc("/getExifDateTime/", getExifDateTimeHandler)
+	http.HandleFunc("/getAsset/", getAssetHandler)
+	http.HandleFunc("/getAssetCount/", getAssetCountHandler)
 	http.HandleFunc("/updateDatabase/", updateDatabaseHandler)
 	http.ListenAndServe(":8080", nil)
 }

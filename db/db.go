@@ -1,7 +1,9 @@
 package db
 
 import (
+	"bytes"
 	"encoding/binary"
+	"encoding/gob"
 	"fmt"
 	"log"
 	"time"
@@ -9,13 +11,18 @@ import (
 	"github.com/boltdb/bolt"
 )
 
-type dbItem struct {
-	key       []byte
-	datetime  time.Time
-	thumbnail []byte
+type assetKvp struct {
+	Key   []byte
+	Value assetInfo
 }
 
-var dbWriteChannel = make(chan dbItem)
+type assetInfo struct {
+	Path      []byte
+	Thumbnail []byte
+	DateTime  time.Time
+}
+
+var dbWriteChannel = make(chan assetKvp)
 
 func Init() {
 	go writeChannelMonitor()
@@ -23,17 +30,17 @@ func Init() {
 
 func writeChannelMonitor() {
 	for {
-		dbItem := <-dbWriteChannel
-		putImage(dbItem)
-		fmt.Printf("Put in database: %s\n", dbItem.key)
+		assetInfo := <-dbWriteChannel
+		putAsset(assetInfo)
+		fmt.Printf("Put in database: %s\n", assetInfo.Key)
 	}
 }
 
-func PutImage(key []byte, datetime time.Time, img []byte) {
-	dbWriteChannel <- dbItem{key, datetime, img}
+func PutAsset(key []byte, path []byte, thumbnail []byte, dateTime time.Time) {
+	dbWriteChannel <- assetKvp{key, assetInfo{path, thumbnail, dateTime}}
 }
 
-func putImage(item dbItem) {
+func putAsset(kvp assetKvp) {
 	db, err := bolt.Open("chronoshot.db", 0777, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -41,28 +48,40 @@ func putImage(item dbItem) {
 	defer db.Close()
 
 	db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte("images"))
+		b, err := tx.CreateBucketIfNotExists([]byte("assets"))
 		if err != nil {
 			return err
 		}
-		return b.Put(item.key, item.thumbnail)
-	})
-
-	db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte("datetime"))
+		serialisedAssetInfo, err := serialise(kvp.Value)
 		if err != nil {
-			return err
+			log.Fatal(err)
 		}
-
-		// xyzzy something like this?
-		//singleDateBucket, err := b.CreateBucketIfNotExists([]byte(item.datetime.String()))
-		//singleDateBucket.Put(item.key, item.thumbnail)
-		// instead of this...
-		return b.Put([]byte(item.datetime.String()), item.key)
+		return b.Put(kvp.Key, serialisedAssetInfo)
 	})
 }
 
-func GetImage(key []byte) []byte {
+func serialise(key interface{}) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(key)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func deserialiseAssetInfo(key []byte) (assetInfo, error) {
+	buf := bytes.NewBuffer(key)
+	var t assetInfo
+	dec := gob.NewDecoder(buf)
+	err := dec.Decode(&t)
+	if err != nil {
+		return assetInfo{}, err
+	}
+	return t, nil
+}
+
+func GetThumbnail(key []byte) []byte {
 	db, err := bolt.Open("chronoshot.db", 0777, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -71,15 +90,19 @@ func GetImage(key []byte) []byte {
 
 	var buf []byte
 	err = db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("images"))
-		buf = b.Get(key)
+		b := tx.Bucket([]byte("assets"))
+		info, err := deserialiseAssetInfo(b.Get(key))
+		if err != nil {
+			log.Fatal(err)
+		}
+		buf = info.Thumbnail
 		return nil
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// buf is lost on return (probably because of db.Close())
+	// buf is lost on return because of db.Close()
 	bufCopy := make([]byte, len(buf), (cap(buf)+1)*2)
 	copy(bufCopy, buf)
 	return bufCopy
@@ -94,7 +117,7 @@ func KeyExists(key []byte) bool {
 
 	var buf []byte
 	err = db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("images"))
+		b := tx.Bucket([]byte("assets"))
 		if b != nil {
 			buf = b.Get(key)
 		}
@@ -107,7 +130,7 @@ func KeyExists(key []byte) bool {
 	return buf != nil
 }
 
-func GetImageByIndex(i uint64) []byte {
+func GetThumbnailByIndex(i uint64) []byte {
 	db, err := bolt.Open("chronoshot.db", 0777, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -117,43 +140,86 @@ func GetImageByIndex(i uint64) []byte {
 	var buf []byte
 	err = db.View(func(tx *bolt.Tx) error {
 		index := tx.Bucket([]byte("index"))
-		imageKey := index.Get(itob(i))
+		assetKey := index.Get(itob(i))
 
-		images := tx.Bucket([]byte("images"))
-		buf = images.Get(imageKey)
+		if assetKey != nil {
+			assets := tx.Bucket([]byte("assets"))
+			info, err := deserialiseAssetInfo(assets.Get(assetKey))
+			if err != nil {
+				log.Fatal(err)
+			}
+			buf = info.Thumbnail
+		}
 		return nil
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// buf is lost on return (probably because of db.Close())
+	// buf is lost on return because of db.Close()
 	bufCopy := make([]byte, len(buf), (cap(buf)+1)*2)
 	copy(bufCopy, buf)
 	return bufCopy
 }
 
-func GetKeyByIndex(i uint64) []byte {
+func GetDateTimeByIndex(i uint64) time.Time {
 	db, err := bolt.Open("chronoshot.db", 0777, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	var imageKey []byte
+	var dateTime time.Time
 	err = db.View(func(tx *bolt.Tx) error {
 		index := tx.Bucket([]byte("index"))
-		imageKey = index.Get(itob(i))
+		assetKey := index.Get(itob(i))
+
+		if assetKey != nil {
+			assets := tx.Bucket([]byte("assets"))
+			info, err := deserialiseAssetInfo(assets.Get(assetKey))
+			if err != nil {
+				log.Fatal(err)
+			}
+			dateTime = info.DateTime
+		}
 		return nil
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// imageKey is lost on return (probably because of db.Close())
-	imageKeyCopy := make([]byte, len(imageKey), (cap(imageKey)+1)*2)
-	copy(imageKeyCopy, imageKey)
-	return imageKeyCopy
+	return dateTime
+}
+
+func GetAssetPathByIndex(i uint64) []byte {
+	db, err := bolt.Open("chronoshot.db", 0777, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	var assetKey []byte
+	err = db.View(func(tx *bolt.Tx) error {
+		index := tx.Bucket([]byte("index"))
+		assetKey = index.Get(itob(i))
+
+		assets := tx.Bucket([]byte("assets"))
+		info, err := deserialiseAssetInfo(assets.Get(assetKey))
+		if err != nil {
+			log.Fatal(err)
+		}
+		assetKey = info.Path
+
+		return nil
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// assetKey is lost on return because of db.Close()
+	assetKeyCopy := make([]byte, len(assetKey), (cap(assetKey)+1)*2)
+	copy(assetKeyCopy, assetKey)
+	return assetKeyCopy
 }
 
 func CreateIndex() {
@@ -164,7 +230,7 @@ func CreateIndex() {
 	defer db.Close()
 
 	err = db.Update(func(tx *bolt.Tx) error {
-		datetime, err := tx.CreateBucketIfNotExists([]byte("datetime"))
+		assets, err := tx.CreateBucketIfNotExists([]byte("assets"))
 		if err != nil {
 			return err
 		}
@@ -178,13 +244,13 @@ func CreateIndex() {
 			return err
 		}
 
-		datetimeCount := uint64(getLengthOfBucket(db, "datetime"))
+		assetsCount := uint64(getLengthOfBucket(db, "assets"))
 
 		// Iterate over items in sorted key order.
 		// Put in index in reverse datetime order.
-		if err := datetime.ForEach(func(k, v []byte) error {
+		if err := assets.ForEach(func(k, v []byte) error {
 			id, _ := index.NextSequence()
-			index.Put(itob(datetimeCount-id), v)
+			index.Put(itob(assetsCount-id), k)
 			return nil
 		}); err != nil {
 			return err
@@ -219,44 +285,6 @@ func getLengthOfBucket(db *bolt.DB, bucketName string) int {
 	}
 
 	return lengthOfIndex
-}
-
-func CreateIndex_xyzzyOrigDelete() {
-	db, err := bolt.Open("chronoshot.db", 0777, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
-	err = db.Update(func(tx *bolt.Tx) error {
-		images, err := tx.CreateBucketIfNotExists([]byte("images"))
-		if err != nil {
-			return err
-		}
-
-		err = tx.DeleteBucket([]byte("index"))
-		if err != bolt.ErrBucketNotFound {
-			return err
-		}
-		index, err := tx.CreateBucket([]byte("index"))
-		if err != nil {
-			return err
-		}
-
-		// Iterate over items in sorted key order.
-		if err := images.ForEach(func(k, v []byte) error {
-			id, _ := index.NextSequence()
-			index.Put(itob(id), k)
-			return nil
-		}); err != nil {
-			return err
-		}
-
-		return nil
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
 }
 
 // itob returns an 8-byte big endian representation of v.

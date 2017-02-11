@@ -87,7 +87,7 @@
     </div>
 
     <script>
-      totalImageCount = 0;
+      totalAssetCount = 0;
       divThumbnailPadding = 20; // Must match CSS .divThumbnail padding
       thumbnailSize = 200;
       var columnsToCreate = Math.floor((window.innerWidth - (2 * divThumbnailPadding)) / (thumbnailSize + (2 * divThumbnailPadding)))
@@ -95,8 +95,15 @@
 
       function scrollHandler() {
         console.log(document.getElementById('scrollbar').scrollTop);
-        document.getElementById('divScrollPosition').textContent = document.getElementById('scrollbar').scrollTop;
+
         updateThumbnailGridOffset();
+
+        //document.getElementById('divScrollPosition').textContent = document.getElementById('scrollbar').scrollTop;
+        fetch('/getExifDateTime/?id='+assetIdOfFirstThumbnail).then(function (response) {
+            return response.json();
+          }).then(function(data) {
+              document.getElementById('divScrollPosition').textContent = data.datetime
+            });
       }
 
       function incrementScroll() {
@@ -134,29 +141,32 @@
       function configureScroll() {
         var divOverflow = document.getElementById('scrollbarOverflower');
 
-        fetch('/getImageCount').then(function (response) {
+        fetch('/getAssetCount').then(function (response) {
             return response.json();
           }).then(function(data) {
-              totalImageCount = data;
-              divOverflow.style.minHeight = (window.innerHeight + totalImageCount) + 'px';
+              totalAssetCount = data;
+              divOverflow.style.minHeight = (window.innerHeight + totalAssetCount) + 'px';
               updateThumbnailGridOffset();
             });
       }
 
+      var assetIdOfFirstThumbnail = 1
       function updateThumbnailGridOffset() {
         // Change offset only by a whole row at once.
         var scrollTop = document.getElementById('scrollbar').scrollTop;
-        var scrollOffset = (scrollTop / totalImageCount) * totalImageCount;
+        var scrollOffset = (scrollTop / totalAssetCount) * totalAssetCount;
         var offset = Math.floor(scrollOffset / columnsToCreate) * columnsToCreate;
         //var offset = Math.floor(scrollTop / columnsToCreate) * columnsToCreate;
         console.log('offset = ' + offset);
+
+        assetIdOfFirstThumbnail = 1 + offset
 
         var divThumbnailGrid = document.getElementById('divThumbnailGrid');
         var imageAnchors = divThumbnailGrid.getElementsByTagName('a');
 
         for (var i = 0; i < imageAnchors.length; ++i) {
             imageAnchor = imageAnchors[i];
-            imageAnchor.href = "/getImage/?id=" + (1+i+offset);
+            imageAnchor.href = "/getAsset/?id=" + (1+i+offset);
             var image = imageAnchor.getElementsByTagName('img')[0];
             image.src = "/getThumbnail/?id=" + (1+i+offset);
         }
