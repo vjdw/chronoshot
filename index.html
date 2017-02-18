@@ -63,9 +63,146 @@
         border-radius: 10%;
       }
 
+      /***********************************************/
+      /***********************************************/
+      /***********************************************/
+
+      #myImg {
+          border-radius: 5px;
+          cursor: pointer;
+          transition: 0.3s;
+      }
+
+      #myImg:hover {opacity: 0.7;}
+
+      /* The Modal (background) */
+      .modal {
+          display: none; /* Hidden by default */
+          position: fixed; /* Stay in place */
+          z-index: 1; /* Sit on top */
+          /*padding-top: 100px;  Location of the box */
+          left: 0;
+          top: 0;
+          width: 100%; /* Full width */
+          height: 100%; /* Full height */
+          overflow: auto; /* Enable scroll if needed */
+          background-color: rgb(0,0,0); /* Fallback color */
+          background-color: rgba(0,0,0,0.9); /* Black w/ opacity */
+      }
+
+      /* Modal Content (image) */
+      .modal-content {
+          margin: auto;
+          display: block;
+          width: auto;
+          height: 100%;
+          /*max-width: 700px;*/
+      }
+
+      /* Caption of Modal Image */
+      #caption {
+          margin: auto;
+          display: block;
+          width: 80%;
+          max-width: 700px;
+          text-align: center;
+          color: #ccc;
+          padding: 10px 0;
+          height: 150px;
+      }
+
+      /* Add Animation */
+      /*.modal-content, #caption {    
+          -webkit-animation-name: zoom;
+          -webkit-animation-duration: 0.6s;
+          animation-name: zoom;
+          animation-duration: 0.6s;
+      }*/
+
+      @-webkit-keyframes zoom {
+          from {-webkit-transform:scale(0)} 
+          to {-webkit-transform:scale(1)}
+      }
+
+      @keyframes zoom {
+          from {transform:scale(0)} 
+          to {transform:scale(1)}
+      }
+
+      /* The Close Button */
+      .close {
+          position: absolute;
+          z-index: 2;
+          top: 15px;
+          right: 35px;
+          color: #f1f1f1;
+          font-size: 40px;
+          font-weight: bold;
+          transition: 0.3s;
+      }
+
+      .close:hover,
+      .close:focus {
+          color: #bbb;
+          text-decoration: none;
+          cursor: pointer;
+      }
+
+      /* 100% Image Width on Smaller Screens */
+      @media only screen and (max-width: 700px){
+          .modal-content {
+              width: 100%;
+          }
+      }
+
+      /****************************************/
+      .contentContainer {
+          /*border: 1px solid #DDDDDD;
+          width: 200px;
+          height: 200px;*/
+          position:relative;
+
+          margin: auto;
+          display: block;
+          width: auto;
+          /*height: 80%;*/
+          /*max-width: 700px;*/
+      }
+      .contentPrevious {
+          float: left;
+          position: absolute;
+          left: 0px;
+          top: 0px;
+          /*background-color: green;*/
+          height: 100%;
+          min-width: 50%;
+      }
+
+      .contentNext {
+          float: right;
+          position: absolute;
+          right: 0px;
+          top: 0px;
+          /*background-color: green;*/
+          height: 100%;
+          min-width: 50%;
+      }
+
     </style>
   </head>
   <body>
+
+    <div id="divModal" class="modal">
+      <span class="close">&times;</span>
+      <div class="contentContainer">
+        <div class="contentPrevious" onclick="moveModalPrevious()"></div>
+        <img class="modal-content" id="imgModal1">
+        <img class="modal-content" id="imgModal2">
+        <img class="modal-content" id="imgModal3">
+        <div class="contentNext" onclick="moveModalNext()"></div>
+      </div>
+      <!--<div id="caption"></div>-->
+    </div>
 
     <div id="divMain">
       
@@ -87,18 +224,30 @@
     </div>
 
     <script>
-      totalAssetCount = 0;
-      divThumbnailPadding = 20; // Must match CSS .divThumbnail padding
-      thumbnailSize = 200;
+      var totalAssetCount = 0;
+      var divThumbnailPadding = 20; // Must match CSS .divThumbnail padding
+      var thumbnailSize = 200;
       var columnsToCreate = Math.floor((window.innerWidth - (2 * divThumbnailPadding)) / (thumbnailSize + (2 * divThumbnailPadding)))
       var rowsToCreate = 3;
+
+      var modalAssetId = -1;
+
+      var thumbnailMetadata = [];
+      for (var i=0; i < rowsToCreate; i++) {
+        var rowThumbnailMetadata;
+        for (rowThumbnailMetadata=[]; rowThumbnailMetadata.push({})<columnsToCreate;);
+        thumbnailMetadata.push(rowThumbnailMetadata);
+      }
+
+      function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
 
       function scrollHandler() {
         console.log(document.getElementById('scrollbar').scrollTop);
 
         updateThumbnailGridOffset();
 
-        //document.getElementById('divScrollPosition').textContent = document.getElementById('scrollbar').scrollTop;
         fetch('/getExifDateTime/?id='+assetIdOfFirstThumbnail).then(function (response) {
             return response.json();
           }).then(function(data) {
@@ -114,25 +263,62 @@
         document.getElementById('scrollbar').scrollTop -= columnsToCreate;   
       }
 
+      function moveModalNext() {
+        var oldCurrent = modalImgCurrent;
+        modalImgCurrent = modalImgNext;
+        modalImgNext = oldCurrent;
+
+        modalImgNext.style.display = "none";
+        modalImgCurrent.style.display = "block";
+
+        modalAssetId++;
+        modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
+        modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
+      }
+
+      function moveModalPrevious() {
+        var oldCurrent = modalImgCurrent;
+        modalImgCurrent = modalImgPrevious;
+        modalImgPrevious = oldCurrent;
+
+        modalImgPrevious.style.display = "none";
+        modalImgCurrent.style.display = "block";
+
+        modalAssetId--;
+        modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
+        modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
+      }
+
       function createThumbnailGrid() {
         var divThumbnailGrid = document.getElementById('divThumbnailGrid');
 
-        for (row = 0; row < rowsToCreate; row++) {
+        for (var row = 0; row < rowsToCreate; row++) {
           var divRow = document.createElement("div");
           divRow.className = "divThumbnailRow"
-          for (column = 0; column < columnsToCreate; column++) {
+          for (var column = 0; column < columnsToCreate; column++) {
             var divThumbnail = document.createElement("div");
             divThumbnail.className = "divThumbnail";
             divRow.appendChild(divThumbnail);
 
-            var anchorThumbnail = document.createElement("a");
-            divThumbnail.appendChild(anchorThumbnail);
-            
             var imgThumbnail = document.createElement("img");
             imgThumbnail.className = "imgThumbnail"
             imgThumbnail.width = thumbnailSize;
             imgThumbnail.height = thumbnailSize;
-            anchorThumbnail.appendChild(imgThumbnail);
+
+            imgThumbnail.onclick = function(r,c) {
+              return function() {
+                console.log('row = ' + r + ' col = ' + c);
+                modal.style.display = "block";
+                modalAssetId = thumbnailMetadata[r][c].assetId;
+                modalImgCurrent.src = "/getAsset/?id=" + modalAssetId;
+                
+                // Queue up the next images
+                modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
+                modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
+              };
+            }(row, column);
+
+           divThumbnail.appendChild(imgThumbnail);
           }
           divThumbnailGrid.appendChild(divRow); 
         }
@@ -150,32 +336,48 @@
             });
       }
 
+      // Get the <span> element that closes the modal
+      var modal = document.getElementById('divModal');
+      var modalImgPrevious = document.getElementById("imgModal1");
+      var modalImgCurrent = document.getElementById("imgModal2");
+      var modalImgNext = document.getElementById("imgModal3");
+      modalImgPrevious.style.display = "none";
+      modalImgNext.style.display = "none";
+      var span = document.getElementsByClassName("close")[0];
+      span.onclick = function() { 
+          modal.style.display = "none";
+      }
+
       var assetIdOfFirstThumbnail = 1
+
       function updateThumbnailGridOffset() {
         // Change offset only by a whole row at once.
         var scrollTop = document.getElementById('scrollbar').scrollTop;
         var scrollOffset = (scrollTop / totalAssetCount) * totalAssetCount;
         var offset = Math.floor(scrollOffset / columnsToCreate) * columnsToCreate;
-        //var offset = Math.floor(scrollTop / columnsToCreate) * columnsToCreate;
         console.log('offset = ' + offset);
 
         assetIdOfFirstThumbnail = 1 + offset
 
         var divThumbnailGrid = document.getElementById('divThumbnailGrid');
-        var imageAnchors = divThumbnailGrid.getElementsByTagName('a');
 
-        for (var i = 0; i < imageAnchors.length; ++i) {
-            imageAnchor = imageAnchors[i];
-            imageAnchor.href = "/getAsset/?id=" + (1+i+offset);
-            var image = imageAnchor.getElementsByTagName('img')[0];
+        var images = divThumbnailGrid.getElementsByTagName('img');
+
+        for (var i = 0; i < images.length; ++i) {
+            image = images[i];
             image.src = "/getThumbnail/?id=" + (1+i+offset);
+        }
+
+        for (var row = 0; row < rowsToCreate; row++) {
+          for (var column = 0; column < columnsToCreate; column++) {
+            thumbnailMetadata[row][column].assetId = offset+1+(row*columnsToCreate)+column;
+          }
         }
       }
 
       createThumbnailGrid();
       configureScroll();
-      //updateThumbnailGridOffset();
-      
+
     </script>
   <body>
 <html>

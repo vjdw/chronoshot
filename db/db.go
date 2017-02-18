@@ -227,7 +227,10 @@ func CreateIndex() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		fmt.Printf("Finished creating index.\n")
+		db.Close()
+	}()
 
 	err = db.Update(func(tx *bolt.Tx) error {
 		assets, err := tx.CreateBucketIfNotExists([]byte("assets"))
@@ -244,13 +247,29 @@ func CreateIndex() {
 			return err
 		}
 
-		assetsCount := uint64(getLengthOfBucket(db, "assets"))
+		// index, err := tx.CreateBucketIfNotExists([]byte("index"))
+		// if err != nil {
+		// 	return err
+		// }
+		// if err := index.ForEach(func(k, v []byte) error {
+		// 	index.Delete(k)
+		// 	return nil
+		// }); err != nil {
+		// 	return err
+		// }
+
+		assetsCount, err := getLengthOfBucket(db, "assets")
+		if err != nil {
+			fmt.Println("Error in CreateIndex getting length of assets bucket", err)
+			log.Fatal(err)
+		}
 
 		// Iterate over items in sorted key order.
 		// Put in index in reverse datetime order.
 		if err := assets.ForEach(func(k, v []byte) error {
 			id, _ := index.NextSequence()
-			index.Put(itob(assetsCount-id), k)
+			fmt.Println("Adding to index", string(uint64(assetsCount)-id), string(k))
+			index.Put(itob(uint64(assetsCount)-id), k)
 			return nil
 		}); err != nil {
 			return err
@@ -270,10 +289,15 @@ func GetLengthOfIndex() int {
 	}
 	defer db.Close()
 
-	return getLengthOfBucket(db, "index")
+	lengthOfBucket, err := getLengthOfBucket(db, "index")
+	if err != nil {
+		fmt.Println("Error in GetLengthOfIndex getting length of index bucket", err)
+		log.Fatal(err)
+	}
+	return lengthOfBucket
 }
 
-func getLengthOfBucket(db *bolt.DB, bucketName string) int {
+func getLengthOfBucket(db *bolt.DB, bucketName string) (int, error) {
 	var lengthOfIndex int
 	err := db.View(func(tx *bolt.Tx) error {
 		index := tx.Bucket([]byte(bucketName))
@@ -281,10 +305,10 @@ func getLengthOfBucket(db *bolt.DB, bucketName string) int {
 		return nil
 	})
 	if err != nil {
-		log.Fatal(err)
+		return 0, err
 	}
 
-	return lengthOfIndex
+	return lengthOfIndex, nil
 }
 
 // itob returns an 8-byte big endian representation of v.

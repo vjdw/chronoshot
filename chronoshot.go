@@ -46,23 +46,29 @@ func getAssetCountHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getAssetHandler(w http.ResponseWriter, r *http.Request) {
-
 	id := r.URL.Query().Get("id")
 	index, err := strconv.ParseUint(id, 10, 64)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(id, "is not a valid id.")
+		http.NotFound(w, r)
+		return
 	}
 	imgPath := db.GetAssetPathByIndex(index)
+	log.Println("Requested asset:", string(imgPath))
 
 	f, err := os.Open(string(imgPath[:]))
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Could not open file", string(imgPath[:]))
+		http.NotFound(w, r)
+		return
 	}
 
 	var buf bytes.Buffer
 	_, err = buf.ReadFrom(f)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Could not read file", string(imgPath[:]))
+		http.NotFound(w, r)
+		return
 	}
 
 	w.Header().Set("Content-Type", "image/jpeg")
@@ -148,9 +154,6 @@ func processPhoto(path string, info os.FileInfo, err error) error {
 		lowerPath := strings.ToLower(path)
 		if strings.HasSuffix(lowerPath, "jpg") || strings.HasSuffix(lowerPath, "jpeg") {
 
-			// xyzzy - make key date and path for uniqueness even when photos have same datetime.
-			// "20160629-123001-/photos/myphoto.jpg"
-			//var imageDbKey = []byte(path)
 			datetime := getExifDateTime(path)
 			assetDbKey := []byte(strings.Join([]string{datetime.String(), path}, "#"))
 
@@ -162,7 +165,6 @@ func processPhoto(path string, info os.FileInfo, err error) error {
 
 			// xyzzy remove datetime, shouldn't need to pass it to storeThumbnail now assetDbKey includes datetime.
 			//datetime := getExifDateTime(path)
-
 			storeThumbnail(assetDbKey, path, datetime)
 		}
 	}(path)
@@ -249,8 +251,8 @@ func storeThumbnail(assetDbKey []byte, path string, dateTime time.Time) error {
 func main() {
 	db.Init()
 
-	//dir := "/home/vin/Desktop/scratch"
-	dir := "/media/data/photos"
+	dir := "/home/vin/Desktop/scratch"
+	//dir := "/media/data/photos"
 
 	if err := filepath.Walk(dir, processPhoto); err != nil {
 		log.Fatal(err)
