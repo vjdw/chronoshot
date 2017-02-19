@@ -248,11 +248,31 @@ func storeThumbnail(assetDbKey []byte, path string, dateTime time.Time) error {
 	return nil
 }
 
+// extract captures from a video / http://stackoverflow.com/a/35411887
+//
+// import (
+//     "bytes"
+//     "fmt"
+//     "os/exec"
+// )
+// func main() {
+//     filename := "test.mp4"
+//     width := 640
+//     height := 360
+//     cmd := exec.Command("ffmpeg", "-i", filename, "-vframes", "1", "-s", fmt.Sprintf("%dx%d", width, height), "-f", "singlejpeg", "-")
+//     var buffer bytes.Buffer
+//     cmd.Stdout = &buffer
+//     if cmd.Run() != nil {
+//         panic("could not generate frame")
+//     }
+//     // Do something with buffer, which contains a JPEG image
+// }
+
 func main() {
 	db.Init()
 
-	dir := "/home/vin/Desktop/scratch"
-	//dir := "/media/data/photos"
+	//dir := "/home/vin/Desktop/scratch"
+	dir := "/media/data/photos"
 
 	if err := filepath.Walk(dir, processPhoto); err != nil {
 		log.Fatal(err)
@@ -264,7 +284,7 @@ func main() {
 
 	db.CreateIndex()
 
-	fmt.Printf("Starting version: 6\n")
+	fmt.Printf("Starting version: 8\n")
 
 	http.HandleFunc("/", rootHandler)
 	http.HandleFunc("/getThumbnail/", getThumbnailHandler)

@@ -232,14 +232,21 @@ func CreateIndex() {
 		db.Close()
 	}()
 
+	// index needs to be deleted before it's recreated.
+	err = db.Update(func(tx *bolt.Tx) error {
+		err = tx.DeleteBucket([]byte("index"))
+		if err != bolt.ErrBucketNotFound {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	err = db.Update(func(tx *bolt.Tx) error {
 		assets, err := tx.CreateBucketIfNotExists([]byte("assets"))
 		if err != nil {
-			return err
-		}
-
-		err = tx.DeleteBucket([]byte("index"))
-		if err != bolt.ErrBucketNotFound {
 			return err
 		}
 		index, err := tx.CreateBucket([]byte("index"))
@@ -247,20 +254,8 @@ func CreateIndex() {
 			return err
 		}
 
-		// index, err := tx.CreateBucketIfNotExists([]byte("index"))
-		// if err != nil {
-		// 	return err
-		// }
-		// if err := index.ForEach(func(k, v []byte) error {
-		// 	index.Delete(k)
-		// 	return nil
-		// }); err != nil {
-		// 	return err
-		// }
-
 		assetsCount, err := getLengthOfBucket(db, "assets")
 		if err != nil {
-			fmt.Println("Error in CreateIndex getting length of assets bucket", err)
 			log.Fatal(err)
 		}
 
