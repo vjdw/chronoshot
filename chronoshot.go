@@ -164,7 +164,10 @@ func processPhoto(path string, info os.FileInfo, err error) error {
 			}
 			//fmt.Println(path)
 
-			storeThumbnail(assetDbKey, path, datetime)
+			err := storeThumbnail(assetDbKey, path, datetime)
+			if err != nil {
+				fmt.Println("Could not process photo:", path, "because:", err)
+			}
 		}
 	}(path)
 
@@ -207,7 +210,8 @@ func getExifDateTime(path string) time.Time {
 func storeThumbnail(assetDbKey []byte, path string, dateTime time.Time) error {
 	buffer, err := bimg.Read(path)
 	if err != nil {
-		log.Fatal(err)
+		return err
+		//log.Fatal(err)
 	}
 
 	thumbnail, err := bimg.NewImage(buffer).Thumbnail(200)
@@ -244,8 +248,8 @@ func main() {
 	fmt.Println("Starting chronoshot version: 9.")
 	db.Init()
 
-	dir := "/home/vin/Desktop/scratch"
-	//dir := "/media/data/photos"
+	//dir := "/home/vin/Desktop/scratch"
+	dir := "/media/data/photos"
 
 	ticker := time.NewTicker(5 * time.Second)
 	quit := make(chan struct{})
@@ -272,8 +276,6 @@ func main() {
 		<-rateLimiter
 	}
 
-	fmt.Println("Webserver ready.")
-
 	go watchDirectory(dir)
 
 	http.HandleFunc("/", rootHandler)
@@ -283,6 +285,7 @@ func main() {
 	http.HandleFunc("/getAssetCount/", getAssetCountHandler)
 	http.HandleFunc("/updateDatabase/", updateDatabaseHandler)
 	http.ListenAndServe(":8080", nil)
+	fmt.Println("Webserver ready.")
 }
 
 // itob returns an 8-byte big endian representation of v.
