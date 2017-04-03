@@ -119,14 +119,15 @@ func updateDatabaseHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func watchDirectory() {
+func watchDirectory(path string) {
 	// Make the channel buffered to ensure no event is dropped. Notify will drop
 	// an event if the receiver is not able to keep up the sending pace.
 	c := make(chan notify.EventInfo, 1)
 
 	// Set up a watchpoint listening for events within a directory tree rooted
 	// at current working directory. Dispatch remove events to c.
-	if err := notify.Watch("./...", c, notify.Create|notify.Rename|notify.Remove); err != nil {
+	recursivePath := strings.Join([]string{path, "/..."}, "")
+	if err := notify.Watch(recursivePath, c, notify.Create|notify.Rename|notify.Remove); err != nil {
 		log.Fatal(err)
 	}
 	defer notify.Stop(c)
@@ -134,8 +135,8 @@ func watchDirectory() {
 	// Block until an event is received.
 	for {
 		ei := <-c
-		//storeThumbnail(ei.Path, )
 		log.Println("Got event:", ei)
+		go processPhoto(ei.Path(), nil, nil)
 	}
 }
 
@@ -158,13 +159,11 @@ func processPhoto(path string, info os.FileInfo, err error) error {
 			assetDbKey := []byte(strings.Join([]string{datetime.String(), path}, "#"))
 
 			if db.KeyExists(assetDbKey) {
-				fmt.Printf("Already in database: %s\n", path)
+				//fmt.Printf("Already in database: %s\n", path)
 				return
 			}
-			fmt.Println(path)
+			//fmt.Println(path)
 
-			// xyzzy remove datetime, shouldn't need to pass it to storeThumbnail now assetDbKey includes datetime.
-			//datetime := getExifDateTime(path)
 			storeThumbnail(assetDbKey, path, datetime)
 		}
 	}(path)
@@ -197,51 +196,24 @@ func getExifDateTime(path string) time.Time {
 
 	// Two convenience functions exist for date/time taken and GPS coords:
 	tm, _ := x.DateTime()
-	fmt.Println("Taken: ", tm)
+	//fmt.Println("Taken: ", tm)
 
-	lat, long, _ := x.LatLong()
-	fmt.Println("lat, long: ", lat, ", ", long)
+	//lat, long, _ := x.LatLong()
+	//fmt.Println("lat, long: ", lat, ", ", long)
 
 	return tm
 }
 
 func storeThumbnail(assetDbKey []byte, path string, dateTime time.Time) error {
-	// file, err := os.Open(path)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// // decode jpeg into image.Image
-	// img, err := jpeg.Decode(file)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// file.Close()
-
-	// resize to width 200 using Lanczos resampling
-	// and preserve aspect ratio
-	//thumbnail := resize.Resize(200, 0, img, resize.Lanczos3)
-
 	buffer, err := bimg.Read(path)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	//newImage, err := bimg.NewImage(buffer).Resize(800, 600)
 	thumbnail, err := bimg.NewImage(buffer).Thumbnail(200)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	// size, err := bimg.NewImage(newImage).Size()
-	// if size.Width == 400 && size.Height == 300 {
-	// 	fmt.Println("The image size is valid")
-	// }
-
-	// write new image to file
-	//buf := new(bytes.Buffer)
-	//jpeg.Encode(buf, thumbnail, nil)
-	//db.PutImage(assetDbKey, datetime, buf.Bytes())
 
 	db.PutAsset(assetDbKey, []byte(path), thumbnail, dateTime)
 
@@ -269,10 +241,25 @@ func storeThumbnail(assetDbKey []byte, path string, dateTime time.Time) error {
 // }
 
 func main() {
+	fmt.Println("Starting chronoshot version: 9.")
 	db.Init()
 
-	//dir := "/home/vin/Desktop/scratch"
-	dir := "/media/data/photos"
+	dir := "/home/vin/Desktop/scratch"
+	//dir := "/media/data/photos"
+
+	ticker := time.NewTicker(5 * time.Second)
+	quit := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				db.RebuildIndex()
+			case <-quit:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
 
 	if err := filepath.Walk(dir, processPhoto); err != nil {
 		log.Fatal(err)
@@ -281,10 +268,13 @@ func main() {
 	for i := 0; i < cap(rateLimiter); i++ {
 		rateLimiter <- true
 	}
+	for i := 0; i < cap(rateLimiter); i++ {
+		<-rateLimiter
+	}
 
-	db.CreateIndex()
+	fmt.Println("Webserver ready.")
 
-	fmt.Printf("Starting version: 8\n")
+	go watchDirectory(dir)
 
 	http.HandleFunc("/", rootHandler)
 	http.HandleFunc("/getThumbnail/", getThumbnailHandler)
