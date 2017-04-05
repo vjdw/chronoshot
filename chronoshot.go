@@ -5,7 +5,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"image/jpeg"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -14,17 +16,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/h2non/bimg"
-
+	"github.com/disintegration/imaging"
 	"github.com/vjdw/chronoshot/db"
 
 	"github.com/rjeczalik/notify"
 
 	"github.com/rwcarlsen/goexif/exif"
+	"github.com/rwcarlsen/goexif/tiff"
 )
 
 // "github.com/nfnt/resize" replaced by "gopkg.in/h2non/bimg.v1"
 // requires libvips to be installed
+
+func check(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	f, err := os.Open("./index.html")
@@ -48,7 +56,7 @@ func getAssetCountHandler(w http.ResponseWriter, r *http.Request) {
 func getAssetHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	index, err := strconv.ParseUint(id, 10, 64)
-	if err != nil {
+	if err != nil || index < 1 {
 		log.Println(id, "is not a valid id.")
 		http.NotFound(w, r)
 		return
@@ -155,16 +163,18 @@ func processPhoto(path string, info os.FileInfo, err error) error {
 		lowerPath := strings.ToLower(path)
 		if strings.HasSuffix(lowerPath, "jpg") || strings.HasSuffix(lowerPath, "jpeg") {
 
-			datetime := getExifDateTime(path)
-			assetDbKey := []byte(strings.Join([]string{datetime.String(), path}, "#"))
-
-			if db.KeyExists(assetDbKey) {
-				//fmt.Printf("Already in database: %s\n", path)
+			if db.FilePathAdded([]byte(path)) {
+				fmt.Printf("Already in database: %s\n", path)
 				return
 			}
-			//fmt.Println(path)
 
-			err := storeThumbnail(assetDbKey, path, datetime)
+			buf, err := ioutil.ReadFile(path)
+			check(err)
+
+			datetime, orientation := getExifDateTime(buf)
+			assetDbKey := []byte(strings.Join([]string{datetime.String(), path}, "#"))
+
+			err = storeThumbnail(assetDbKey, path, buf, orientation, datetime)
 			if err != nil {
 				fmt.Println("Could not process photo:", path, "because:", err)
 			}
@@ -174,22 +184,27 @@ func processPhoto(path string, info os.FileInfo, err error) error {
 	return nil
 }
 
-func getExifDateTime(path string) time.Time {
-	f, err := os.Open(path)
-	if err != nil {
-		log.Fatal(err)
-	}
+func getExifDateTime(b []byte) (time.Time, *tiff.Tag) {
+	// f, err := os.Open(path)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
 	// Optionally register camera makenote data parsing - currently Nikon and
 	// Canon are supported.
 	//exif.RegisterParsers(mknote.All...)
 
-	x, err := exif.Decode(f)
+	r := bytes.NewReader(b)
+
+	x, err := exif.Decode(r)
 	if err != nil {
 		//log.Fatal(err)
-		return time.Unix(0, 0)
+		return time.Unix(0, 0), nil
 	}
-
+	orientation, err := x.Get(exif.Orientation)
+	if err != nil {
+		orientation = nil
+	}
 	//camModel, _ := x.Get(exif.Model) // normally, don't ignore errors!
 	//fmt.Println(camModel.StringVal())
 
@@ -204,54 +219,68 @@ func getExifDateTime(path string) time.Time {
 	//lat, long, _ := x.LatLong()
 	//fmt.Println("lat, long: ", lat, ", ", long)
 
-	return tm
+	return tm, orientation
 }
 
-func storeThumbnail(assetDbKey []byte, path string, dateTime time.Time) error {
-	buffer, err := bimg.Read(path)
-	if err != nil {
-		return err
-		//log.Fatal(err)
-	}
+func storeThumbnail(assetDbKey []byte, path string, b []byte, orientation *tiff.Tag, dateTime time.Time) error {
+	fmt.Println("storeThumbnail for", path)
 
-	thumbnail, err := bimg.NewImage(buffer).Thumbnail(200)
+	r := bytes.NewReader(b)
+
+	// decode jpeg into image.Image
+	img, err := jpeg.Decode(r)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	db.PutAsset(assetDbKey, []byte(path), thumbnail, dateTime)
+	// Camera orientation, e.g. if orientation value is 6 then top of camera was point right.
+	//    1
+	//  6   8
+	//    3
+	if orientation != nil {
+		if orientation.Val[0] == 8 {
+			img = imaging.Rotate90(img)
+		} else if orientation.Val[0] == 6 {
+			img = imaging.Rotate270(img)
+		} else if orientation.Val[0] == 3 {
+			img = imaging.Rotate180(img)
+		}
+	}
+
+	thumbnail := imaging.Thumbnail(img, 200, 200, imaging.Linear)
+	//thumbnail := resize.Thumbnail(200, 200, img, resize.Bilinear)
+	//thumbnail := resize.Resize(200, 0, img, resize.Lanczos3)
+
+	buf := new(bytes.Buffer)
+	jpeg.Encode(buf, thumbnail, &jpeg.Options{Quality: 75})
+	db.PutAsset(assetDbKey, []byte(path), buf.Bytes(), dateTime)
+
+	////////////////////
+	// // Faster resize method, but seems to not like being multithreaded?
+	// buffer, err := bimg.Read(path)
+	// if err != nil {
+	// 	return err
+	// 	//log.Fatal(err)
+	// }
+
+	// thumbnail, err := bimg.NewImage(buffer).Thumbnail(200)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	//db.PutAsset(assetDbKey, []byte(path), thumbnail, dateTime)
 
 	return nil
 }
 
-// extract captures from a video / http://stackoverflow.com/a/35411887
-//
-// import (
-//     "bytes"
-//     "fmt"
-//     "os/exec"
-// )
-// func main() {
-//     filename := "test.mp4"
-//     width := 640
-//     height := 360
-//     cmd := exec.Command("ffmpeg", "-i", filename, "-vframes", "1", "-s", fmt.Sprintf("%dx%d", width, height), "-f", "singlejpeg", "-")
-//     var buffer bytes.Buffer
-//     cmd.Stdout = &buffer
-//     if cmd.Run() != nil {
-//         panic("could not generate frame")
-//     }
-//     // Do something with buffer, which contains a JPEG image
-// }
-
 func main() {
-	fmt.Println("Starting chronoshot version: 9.")
+	fmt.Println("Starting chronoshot version: 10.")
 	db.Init()
 
 	//dir := "/home/vin/Desktop/scratch"
 	dir := "/media/data/photos"
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(30 * time.Second)
 	quit := make(chan struct{})
 	go func() {
 		for {
@@ -265,6 +294,15 @@ func main() {
 		}
 	}()
 
+	http.HandleFunc("/", rootHandler)
+	http.HandleFunc("/getThumbnail/", getThumbnailHandler)
+	http.HandleFunc("/getExifDateTime/", getExifDateTimeHandler)
+	http.HandleFunc("/getAsset/", getAssetHandler)
+	http.HandleFunc("/getAssetCount/", getAssetCountHandler)
+	http.HandleFunc("/updateDatabase/", updateDatabaseHandler)
+	go http.ListenAndServe(":8080", nil)
+	fmt.Println("Webserver ready.")
+
 	if err := filepath.Walk(dir, processPhoto); err != nil {
 		log.Fatal(err)
 	}
@@ -276,16 +314,8 @@ func main() {
 		<-rateLimiter
 	}
 
-	go watchDirectory(dir)
-
-	http.HandleFunc("/", rootHandler)
-	http.HandleFunc("/getThumbnail/", getThumbnailHandler)
-	http.HandleFunc("/getExifDateTime/", getExifDateTimeHandler)
-	http.HandleFunc("/getAsset/", getAssetHandler)
-	http.HandleFunc("/getAssetCount/", getAssetCountHandler)
-	http.HandleFunc("/updateDatabase/", updateDatabaseHandler)
-	http.ListenAndServe(":8080", nil)
-	fmt.Println("Webserver ready.")
+	fmt.Println("Watching for new images in", dir)
+	watchDirectory(dir)
 }
 
 // itob returns an 8-byte big endian representation of v.

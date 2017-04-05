@@ -8,6 +8,8 @@ import (
 	"log"
 	"time"
 
+	"strings"
+
 	"github.com/boltdb/bolt"
 )
 
@@ -34,7 +36,11 @@ func Init() {
 	defer db.Close()
 
 	err = db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte("index"))
+		_, err = tx.CreateBucketIfNotExists([]byte("fileIndex"))
+		if err != nil {
+			return err
+		}
+		_, err := tx.CreateBucketIfNotExists([]byte("viewIndex"))
 		if err != nil {
 			return err
 		}
@@ -47,6 +53,9 @@ func Init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	db.Close()
+
+	rebuildIndex()
 
 	go writeChannelsMonitor()
 }
@@ -165,6 +174,28 @@ func KeyExists(key []byte) bool {
 	return buf != nil
 }
 
+func FilePathAdded(filepath []byte) bool {
+	db, err := bolt.Open("chronoshot.db", 0777, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	var buf []byte
+	err = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("fileIndex"))
+		if b != nil {
+			buf = b.Get(filepath)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return buf != nil
+}
+
 func GetThumbnailByIndex(i uint64) []byte {
 	db, err := bolt.Open("chronoshot.db", 0777, nil)
 	if err != nil {
@@ -174,8 +205,8 @@ func GetThumbnailByIndex(i uint64) []byte {
 
 	var buf []byte
 	err = db.View(func(tx *bolt.Tx) error {
-		index := tx.Bucket([]byte("index"))
-		assetKey := index.Get(itob(i))
+		viewIndex := tx.Bucket([]byte("viewIndex"))
+		assetKey := viewIndex.Get(itob(i))
 
 		if assetKey != nil {
 			assets := tx.Bucket([]byte("assets"))
@@ -207,8 +238,8 @@ func GetDateTimeByIndex(i uint64) time.Time {
 	var dateTime time.Time
 	err = db.View(func(tx *bolt.Tx) error {
 
-		index := tx.Bucket([]byte("index"))
-		assetKey := index.Get(itob(i))
+		viewIndex := tx.Bucket([]byte("viewIndex"))
+		assetKey := viewIndex.Get(itob(i))
 
 		if assetKey != nil {
 			assets := tx.Bucket([]byte("assets"))
@@ -238,8 +269,8 @@ func GetAssetPathByIndex(i uint64) []byte {
 	var assetValue []byte
 	err = db.View(func(tx *bolt.Tx) error {
 
-		index := tx.Bucket([]byte("index"))
-		assetKey = index.Get(itob(i))
+		viewIndex := tx.Bucket([]byte("viewIndex"))
+		assetKey = viewIndex.Get(itob(i))
 
 		assets := tx.Bucket([]byte("assets"))
 		info, err := deserialiseAssetInfo(assets.Get(assetKey))
@@ -274,7 +305,7 @@ func rebuildIndex() {
 	}
 	defer func() {
 		db.Close()
-		fmt.Printf("%v items added to index.\n", GetLengthOfIndex())
+		fmt.Printf("%v items in index.\n", GetLengthOfIndex())
 	}()
 
 	err = db.Update(func(tx *bolt.Tx) error {
@@ -282,12 +313,24 @@ func rebuildIndex() {
 			fmt.Println("Ignoring request to rebuild index because it isn't dirty.")
 			return nil
 		}
-		fmt.Println("Rebuilding index.")
+		fmt.Print("Rebuilding index... ")
 		isDirtyIndex = false
 
-		index := tx.Bucket([]byte("index"))
-		err = index.ForEach(func(k, v []byte) error {
-			err := index.Delete(k)
+		viewIndex := tx.Bucket([]byte("viewIndex"))
+		err = viewIndex.ForEach(func(k, v []byte) error {
+			err := viewIndex.Delete(k)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+
+		fileIndex := tx.Bucket([]byte("fileIndex"))
+		err = fileIndex.ForEach(func(k, v []byte) error {
+			err := fileIndex.Delete(k)
 			if err != nil {
 				return err
 			}
@@ -304,10 +347,12 @@ func rebuildIndex() {
 		}
 
 		// Iterate over items in sorted key order.
-		// Put in index in reverse datetime order.
+		// Put in viewIndex in reverse datetime order.
 		indexCount := uint64(0)
 		if err := assets.ForEach(func(k, v []byte) error {
-			index.Put(itob(uint64(assetsCount)-indexCount), k)
+			filepath := strings.Split(string(k), "#")[1]
+			fileIndex.Put([]byte(filepath), k)
+			viewIndex.Put(itob(uint64(assetsCount)-indexCount), k)
 			indexCount++
 			return nil
 		}); err != nil {
@@ -327,7 +372,7 @@ func GetLengthOfIndex() int {
 	}
 	defer db.Close()
 
-	lengthOfBucket, err := getLengthOfBucket(db, "index")
+	lengthOfBucket, err := getLengthOfBucket(db, "viewIndex")
 	if err != nil {
 		fmt.Println("Error in GetLengthOfIndex getting length of index bucket", err)
 		log.Fatal(err)
