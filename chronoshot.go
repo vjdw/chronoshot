@@ -170,9 +170,13 @@ func processPhoto(path string, info os.FileInfo, err error) error {
 
 			buf, err := ioutil.ReadFile(path)
 			check(err)
+			if len(buf) == 0 {
+				fmt.Println("Could not process photo:", path, "because file is empty.")
+				return
+			}
 
 			datetime, orientation := getExifDateTime(buf)
-			assetDbKey := []byte(strings.Join([]string{datetime.String(), path}, "#"))
+			assetDbKey := []byte(strings.Join([]string{datetime.String(), path}, "<#>"))
 
 			err = storeThumbnail(assetDbKey, path, buf, orientation, datetime)
 			if err != nil {
@@ -230,10 +234,11 @@ func storeThumbnail(assetDbKey []byte, path string, b []byte, orientation *tiff.
 	// decode jpeg into image.Image
 	img, err := jpeg.Decode(r)
 	if err != nil {
-		log.Fatal(err)
+		return err
+		//log.Fatal(err)
 	}
 
-	// Camera orientation, e.g. if orientation value is 6 then top of camera was point right.
+	// Camera orientation, e.g. if orientation value is 8 then top of camera was point right.
 	//    1
 	//  6   8
 	//    3
@@ -274,11 +279,16 @@ func storeThumbnail(assetDbKey []byte, path string, b []byte, orientation *tiff.
 }
 
 func main() {
-	fmt.Println("Starting chronoshot version: 10.")
+	fmt.Println("Starting chronoshot version: 11.")
 	db.Init()
 
 	//dir := "/home/vin/Desktop/scratch"
-	dir := "/media/data/photos"
+	//dir := "/media/data/photos"
+	dir := "/home/vin/go/src/github.com/h2non/bimg/fixtures"
+	if len(os.Args) > 1 {
+		dir = os.Args[1]
+	}
+	fmt.Println("Photo directory set to", dir)
 
 	ticker := time.NewTicker(30 * time.Second)
 	quit := make(chan struct{})

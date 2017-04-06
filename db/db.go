@@ -350,7 +350,7 @@ func rebuildIndex() {
 		// Put in viewIndex in reverse datetime order.
 		indexCount := uint64(0)
 		if err := assets.ForEach(func(k, v []byte) error {
-			filepath := strings.Split(string(k), "#")[1]
+			filepath := strings.Split(string(k), "<#>")[1]
 			fileIndex.Put([]byte(filepath), k)
 			viewIndex.Put(itob(uint64(assetsCount)-indexCount), k)
 			indexCount++
