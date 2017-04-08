@@ -1,9 +1,13 @@
 <html>
   <head>
+    <script type="text/javascript" src="./vlist.js"></script>
     <style>
 
       body {
         margin: 0px;
+        padding: 0px;
+        border: 0px;
+        overflow: hidden;
         background: gainsboro;
       }
 
@@ -11,49 +15,17 @@
         display: flex;
       }
 
-      #divGrid {
+      #divMain > div {
         display: inline;
       }
 
-      #divScroll {
-        position: absolute;
-        right: 0px;
-        height: 100%;
-      }
-
-      /*#scroll > div { 
-        display: inline-block;
-        background-color: yellow;
-      }*/
-
-      .scrollbar
-      {
-        margin-left: 30px;
-        float: left;
-        height: 100%;
-        overflow-y: scroll;
-        /*margin-bottom: 25px;*/
-      }
-
-      .force-overflow
-      {
-        min-height: 100000px;
-      }
-
-      #wrapper
-      {
-        text-align: center;
-        height: 100%;
-        margin: auto;
-      }
-
-      .divThumbnail
+      .divGrid
       {
         display: inline;
         padding: 20px; /* also used in columnsToCreate calculation */
       }
 
-      .divThumbnailRow
+      .divGridRow
       {
         padding: 20px 0px;
       }
@@ -201,66 +173,23 @@
         <img class="modal-content" id="imgModal3">
         <div class="contentNext" onclick="moveModalNext()"></div>
       </div>
-      <!--<div id="caption"></div>-->
     </div>
 
     <div id="divMain">
-      
-      <div id="divGrid">
-        <button id="btnPrevious" onclick="decrementScroll()"><</button>
-        <button id="btnNext" onclick="incrementScroll()"/>></button>
-        <div id="divScrollPosition"></div>
-        <div id="divThumbnailGrid"></div>
-      </div>
-
-      <div id="divScroll">
-        <div id="wrapper">
-          <div class="scrollbar" id="scrollbar" onscroll="scrollHandler()">
-            <div class="force-overflow" id="scrollbarOverflower"></div>
-          </div>
-        </div>
-      </div>
-
+      <!--<div id="divGrid"/>-->
     </div>
 
     <script>
       var totalAssetCount = 0;
-      var divThumbnailPadding = 20; // Must match CSS .divThumbnail padding
+      var divGridPadding = 20; // Must match CSS .divGrid padding
       var thumbnailSize = 200;
-      var columnsToCreate = Math.floor((window.innerWidth - (2 * divThumbnailPadding)) / (thumbnailSize + (2 * divThumbnailPadding)))
+      var columnsToCreate = Math.floor((window.innerWidth - (2 * divGridPadding)) / (thumbnailSize + (2 * divGridPadding)))
       var rowsToCreate = 3;
-
       var modalAssetId = -1;
-
       var thumbnailMetadata = [];
-      for (var i=0; i < rowsToCreate; i++) {
-        var rowThumbnailMetadata;
-        for (rowThumbnailMetadata=[]; rowThumbnailMetadata.push({})<columnsToCreate;);
-        thumbnailMetadata.push(rowThumbnailMetadata);
-      }
 
       function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
-      }
-
-      function scrollHandler() {
-        console.log(document.getElementById('scrollbar').scrollTop);
-
-        updateThumbnailGridOffset();
-
-        fetch('/getExifDateTime/?id='+assetIdOfFirstThumbnail).then(function (response) {
-            return response.json();
-          }).then(function(data) {
-              document.getElementById('divScrollPosition').textContent = data.datetime
-            });
-      }
-
-      function incrementScroll() {
-        document.getElementById('scrollbar').scrollTop += columnsToCreate;
-      }
-
-      function decrementScroll() {
-        document.getElementById('scrollbar').scrollTop -= columnsToCreate;   
       }
 
       function moveModalNext() {
@@ -289,51 +218,80 @@
         modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
       }
 
-      function createThumbnailGrid() {
-        var divThumbnailGrid = document.getElementById('divThumbnailGrid');
+      function initialise() {
+        fetch('/getAssetCount').then(function (response) {
+          return response.json();
+        }).then(function(data) {
+          totalAssetCount = data;
+          updateThumbnailMetadata();
+          configureVirtualList();
+        });        
+      }
 
-        for (var row = 0; row < rowsToCreate; row++) {
-          var divRow = document.createElement("div");
-          divRow.className = "divThumbnailRow"
+      function updateThumbnailMetadata() {
+        var totalRowCount = totalAssetCount / columnsToCreate;
+        for (var i=0; i < totalRowCount; i++) {
+          var rowThumbnailMetadata;
+          for (rowThumbnailMetadata=[]; rowThumbnailMetadata.push({})<columnsToCreate;)
+            ;
+          thumbnailMetadata.push(rowThumbnailMetadata);
+        }
+
+        for (var row = 0; row < totalRowCount; row++) {
           for (var column = 0; column < columnsToCreate; column++) {
-            var divThumbnail = document.createElement("div");
-            divThumbnail.className = "divThumbnail";
-            divRow.appendChild(divThumbnail);
-
-            var imgThumbnail = document.createElement("img");
-            imgThumbnail.className = "imgThumbnail"
-            imgThumbnail.width = thumbnailSize;
-            imgThumbnail.height = thumbnailSize;
-
-            imgThumbnail.onclick = function(r,c) {
-              return function() {
-                console.log('row = ' + r + ' col = ' + c);
-                modal.style.display = "block";
-                modalAssetId = thumbnailMetadata[r][c].assetId;
-                modalImgCurrent.src = "/getAsset/?id=" + modalAssetId;
-                
-                // Queue up the next images
-                modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
-                modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
-              };
-            }(row, column);
-
-           divThumbnail.appendChild(imgThumbnail);
+            console.log('row = ' + row + ' col = ' + column);
+            var assetId = (row * columnsToCreate) + column;
+            thumbnailMetadata[row][column].assetId = assetId;
           }
-          divThumbnailGrid.appendChild(divRow); 
         }
       }
 
-      function configureScroll() {
-        var divOverflow = document.getElementById('scrollbarOverflower');
-
+      function configureVirtualList() {
         fetch('/getAssetCount').then(function (response) {
-            return response.json();
-          }).then(function(data) {
-              totalAssetCount = data;
-              divOverflow.style.minHeight = (window.innerHeight + totalAssetCount) + 'px';
-              updateThumbnailGridOffset();
-            });
+          return response.json();
+        }).then(function(data) {
+          totalAssetCount = data;
+          var list = new VirtualList({
+            w: window.innerWidth,
+            h: window.innerHeight,
+            itemHeight: 240,
+            totalRows: totalAssetCount,
+            generatorFn: function(row) {
+              var divRow = document.createElement("div");
+              divRow.className = "divGridRow"
+              for (var column = 0; column < columnsToCreate; column++) {
+                var divGrid = document.createElement("div");
+                divGrid.className = "divGrid";
+                divRow.appendChild(divGrid);
+
+                var imgThumbnail = document.createElement("img");
+                console.log(row);
+                imgThumbnail.src = "/getThumbnail/?id=" + ((row * columnsToCreate) + column);
+                imgThumbnail.className = "imgThumbnail"
+                imgThumbnail.width = thumbnailSize;
+                imgThumbnail.height = thumbnailSize;
+
+                imgThumbnail.onclick = function(r,c) {
+                  return function() {
+                    console.log('row = ' + r + ' col = ' + c);
+                    modal.style.display = "block";
+                    modalAssetId = thumbnailMetadata[r][c].assetId;
+                    modalImgCurrent.src = "/getAsset/?id=" + modalAssetId;
+                        
+                    // Queue up the next images
+                    modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
+                    modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
+                  };
+                }(row, column);
+
+                divGrid.appendChild(imgThumbnail);
+              }
+              return divRow;
+            }
+          });
+          var divMain = document.getElementById('divMain');
+          divMain.appendChild(list.container);
+        });
       }
 
       // Get the <span> element that closes the modal
@@ -345,38 +303,10 @@
       modalImgNext.style.display = "none";
       var span = document.getElementsByClassName("close")[0];
       span.onclick = function() { 
-          modal.style.display = "none";
+        modal.style.display = "none";
       }
 
-      var assetIdOfFirstThumbnail = 1
-
-      function updateThumbnailGridOffset() {
-        // Change offset only by a whole row at once.
-        var scrollTop = document.getElementById('scrollbar').scrollTop;
-        var scrollOffset = (scrollTop / totalAssetCount) * totalAssetCount;
-        var offset = Math.floor(scrollOffset / columnsToCreate) * columnsToCreate;
-        console.log('offset = ' + offset);
-
-        assetIdOfFirstThumbnail = 1 + offset
-
-        var divThumbnailGrid = document.getElementById('divThumbnailGrid');
-
-        var images = divThumbnailGrid.getElementsByTagName('img');
-
-        for (var i = 0; i < images.length; ++i) {
-            image = images[i];
-            image.src = "/getThumbnail/?id=" + (1+i+offset);
-        }
-
-        for (var row = 0; row < rowsToCreate; row++) {
-          for (var column = 0; column < columnsToCreate; column++) {
-            thumbnailMetadata[row][column].assetId = offset+1+(row*columnsToCreate)+column;
-          }
-        }
-      }
-
-      createThumbnailGrid();
-      configureScroll();
+      initialise();
 
     </script>
   <body>

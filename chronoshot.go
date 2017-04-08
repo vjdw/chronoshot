@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/jpeg"
-	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -35,12 +35,14 @@ func check(e error) {
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
-	f, err := os.Open("./index.html")
-	if err != nil {
-		log.Fatal(err)
-	}
-	if _, err := io.Copy(w, f); err != nil {
-		log.Fatal(err)
+	root := "static"
+	switch r.Method {
+	case "GET":
+		if r.URL.Path == "" || r.URL.Path == "/" {
+			http.ServeFile(w, r, path.Join(root, "index.html"))
+		} else {
+			http.ServeFile(w, r, path.Join(root, r.URL.Path))
+		}
 	}
 }
 
