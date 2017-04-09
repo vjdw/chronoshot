@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/jpeg"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -126,7 +127,7 @@ func getExifDateTimeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateDatabaseHandler(w http.ResponseWriter, r *http.Request) {
-
+	db.RebuildIndex()
 }
 
 func watchDirectory(path string) {
@@ -173,7 +174,8 @@ func processPhoto(path string, info os.FileInfo, err error) error {
 			buf, err := ioutil.ReadFile(path)
 			check(err)
 			if len(buf) == 0 {
-				fmt.Println("Could not process photo:", path, "because file is empty.")
+				//fmt.Println("Could not process photo:", path, "because file is empty.")
+				chanLog <- strings.Join([]string{"Could not process photo:", path, "because file is empty."}, "")
 				return
 			}
 
@@ -182,7 +184,8 @@ func processPhoto(path string, info os.FileInfo, err error) error {
 
 			err = storeThumbnail(assetDbKey, path, buf, orientation, datetime)
 			if err != nil {
-				fmt.Println("Could not process photo:", path, "because:", err)
+				//fmt.Println("Could not process photo:", path, "because:", err)
+				chanLog <- strings.Join([]string{"Could not process photo:", path, "because:", err.Error()}, "")
 			}
 		}
 	}(path)
@@ -282,15 +285,19 @@ func storeThumbnail(assetDbKey []byte, path string, b []byte, orientation *tiff.
 
 func main() {
 	fmt.Println("Starting chronoshot version: 11.")
+
+	go logChannelMonitor()
 	db.Init()
 
-	//dir := "/home/vin/Desktop/scratch"
+	dir := "/home/vin/Desktop/scratch"
 	//dir := "/media/data/photos"
-	dir := "/home/vin/go/src/github.com/h2non/bimg/fixtures"
+	//dir := "/home/vin/go/src/github.com/h2non/bimg/fixtures"
 	if len(os.Args) > 1 {
 		dir = os.Args[1]
 	}
-	fmt.Println("Photo directory set to", dir)
+
+	chanLog <- strings.Join([]string{"Photo directory set to ", dir}, "")
+	//fmt.Println("Photo directory set to", dir)
 
 	ticker := time.NewTicker(30 * time.Second)
 	quit := make(chan struct{})
@@ -328,6 +335,25 @@ func main() {
 
 	fmt.Println("Watching for new images in", dir)
 	watchDirectory(dir)
+}
+
+var chanLog = make(chan string)
+
+func logChannelMonitor() {
+	logf, err := os.OpenFile("test.log", os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
+	if err != nil {
+		fmt.Printf("error opening file: %v", err)
+	}
+	defer logf.Close()
+	log.SetOutput(logf)
+	mylogger := log.New(io.MultiWriter(logf, os.Stdout), "", 0)
+
+	for {
+		select {
+		case msg := <-chanLog:
+			mylogger.Println(strings.Join([]string{time.Now().String(), ": ", msg}, ""))
+		}
+	}
 }
 
 // itob returns an 8-byte big endian representation of v.

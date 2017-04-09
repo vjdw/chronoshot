@@ -22,7 +22,7 @@
       .divGrid
       {
         display: inline;
-        padding: 20px; /* also used in columnsToCreate calculation */
+        padding: 20px; /* also used in totalColumnCount calculation */
       }
 
       .divGridRow
@@ -183,8 +183,8 @@
       var totalAssetCount = 0;
       var divGridPadding = 20; // Must match CSS .divGrid padding
       var thumbnailSize = 200;
-      var columnsToCreate = Math.floor((window.innerWidth - (2 * divGridPadding)) / (thumbnailSize + (2 * divGridPadding)))
-      var rowsToCreate = 3;
+      var totalColumnCount = Math.floor((window.innerWidth - (2 * divGridPadding)) / (thumbnailSize + (2 * divGridPadding)))
+      var totalRowCount = 0;
       var modalAssetId = -1;
       var thumbnailMetadata = [];
 
@@ -223,75 +223,70 @@
           return response.json();
         }).then(function(data) {
           totalAssetCount = data;
+          totalRowCount = totalAssetCount / totalColumnCount;
           updateThumbnailMetadata();
           configureVirtualList();
         });        
       }
 
       function updateThumbnailMetadata() {
-        var totalRowCount = totalAssetCount / columnsToCreate;
         for (var i=0; i < totalRowCount; i++) {
           var rowThumbnailMetadata;
-          for (rowThumbnailMetadata=[]; rowThumbnailMetadata.push({})<columnsToCreate;)
+          for (rowThumbnailMetadata=[]; rowThumbnailMetadata.push({})<totalColumnCount;)
             ;
           thumbnailMetadata.push(rowThumbnailMetadata);
         }
 
         for (var row = 0; row < totalRowCount; row++) {
-          for (var column = 0; column < columnsToCreate; column++) {
+          for (var column = 0; column < totalColumnCount; column++) {
             console.log('row = ' + row + ' col = ' + column);
-            var assetId = (row * columnsToCreate) + column;
+            var assetId = (row * totalColumnCount) + column;
             thumbnailMetadata[row][column].assetId = assetId;
           }
         }
       }
 
       function configureVirtualList() {
-        fetch('/getAssetCount').then(function (response) {
-          return response.json();
-        }).then(function(data) {
-          totalAssetCount = data;
-          var list = new VirtualList({
-            w: window.innerWidth,
-            h: window.innerHeight,
-            itemHeight: 240,
-            totalRows: totalAssetCount,
-            generatorFn: function(row) {
-              var divRow = document.createElement("div");
-              divRow.className = "divGridRow"
-              for (var column = 0; column < columnsToCreate; column++) {
-                var divGrid = document.createElement("div");
-                divGrid.className = "divGrid";
-                divRow.appendChild(divGrid);
+        var list = new VirtualList({
+          w: window.innerWidth,
+          h: window.innerHeight,
+          itemHeight: 240,
+          totalRows: totalRowCount,
+          generatorFn: function(row) {
+            var divRow = document.createElement("div");
+            divRow.className = "divGridRow"
+            for (var column = 0; column < totalColumnCount; column++) {
+              var divGrid = document.createElement("div");
+              divGrid.className = "divGrid";
+              divRow.appendChild(divGrid);
 
-                var imgThumbnail = document.createElement("img");
-                console.log(row);
-                imgThumbnail.src = "/getThumbnail/?id=" + ((row * columnsToCreate) + column);
-                imgThumbnail.className = "imgThumbnail"
-                imgThumbnail.width = thumbnailSize;
-                imgThumbnail.height = thumbnailSize;
+              var imgThumbnail = document.createElement("img");
+              console.log(row);
+              imgThumbnail.src = "/getThumbnail/?id=" + ((row * totalColumnCount) + column);
+              imgThumbnail.className = "imgThumbnail"
+              imgThumbnail.width = thumbnailSize;
+              imgThumbnail.height = thumbnailSize;
 
-                imgThumbnail.onclick = function(r,c) {
-                  return function() {
-                    console.log('row = ' + r + ' col = ' + c);
-                    modal.style.display = "block";
-                    modalAssetId = thumbnailMetadata[r][c].assetId;
-                    modalImgCurrent.src = "/getAsset/?id=" + modalAssetId;
-                        
-                    // Queue up the next images
-                    modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
-                    modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
-                  };
-                }(row, column);
+              imgThumbnail.onclick = function(r,c) {
+                return function() {
+                  console.log('row = ' + r + ' col = ' + c);
+                  modal.style.display = "block";
+                  modalAssetId = thumbnailMetadata[r][c].assetId;
+                  modalImgCurrent.src = "/getAsset/?id=" + modalAssetId;
+                      
+                  // Queue up the next images
+                  modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
+                  modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
+                };
+              }(row, column);
 
-                divGrid.appendChild(imgThumbnail);
-              }
-              return divRow;
+              divGrid.appendChild(imgThumbnail);
             }
-          });
-          var divMain = document.getElementById('divMain');
-          divMain.appendChild(list.container);
+            return divRow;
+          }
         });
+        var divMain = document.getElementById('divMain');
+        divMain.appendChild(list.container);
       }
 
       // Get the <span> element that closes the modal
