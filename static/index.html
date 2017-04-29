@@ -25,6 +25,11 @@
         margin: 20px; /* also used in totalColumnCount calculation */
       }
 
+      .divGridRowLeftSpacer
+      {
+        display: inline;
+      }
+
       .divGridRow
       {
         margin: 20px 0px;
@@ -216,7 +221,9 @@
       var totalAssetCount = 0;
       var divGridItemPadding = 20; // Must match CSS .divGridItem padding
       var thumbnailSize = 200;
-      var totalColumnCount = Math.floor((window.innerWidth - (2 * divGridItemPadding)) / (thumbnailSize + (2 * divGridItemPadding)))
+      var thumbnailOuterSize = thumbnailSize + (2 * divGridItemPadding);
+      var totalColumnCount = Math.floor((window.innerWidth - (2 * divGridItemPadding)) / thumbnailOuterSize);
+      var leftPaddingToCentraliseGrid = (window.innerWidth - (totalColumnCount * thumbnailOuterSize) - (2 * divGridItemPadding)) / 2;
       var totalRowCount = 0;
       var modalAssetId = -1;
       var thumbnailMetadata = [];
@@ -317,18 +324,23 @@
           itemHeight: 240,
           totalRows: totalRowCount,
           generatorFn: function(row) {
-            var divRow = document.createElement("div");
-            divRow.className = "divGridRow"
+            var divGridRow = document.createElement("div");
+            divGridRow.className = "divGridRow"
+
+            var divGridRowLeftSpacer = document.createElement("div");
+            divGridRowLeftSpacer.className = "divGridRowLeftSpacer";
+            divGridRowLeftSpacer.style.paddingLeft = leftPaddingToCentraliseGrid + "px";
+            divGridRow.appendChild(divGridRowLeftSpacer);
+
             for (var column = 0; column < totalColumnCount; column++) {
               var divGridItem = document.createElement("div");
               divGridItem.className = "divGridItem";
-              divRow.appendChild(divGridItem);
+              divGridRow.appendChild(divGridItem);
 
               var imgId = ((row * totalColumnCount) + column);
 
               // The image thumbnail.
               var imgThumbnail = document.createElement("img");
-              //console.log('row = ' + imgId);
               imgThumbnail.src = "/getThumbnail/?id=" + imgId;
               imgThumbnail.className = "imgThumbnail"
               imgThumbnail.width = thumbnailSize;
@@ -361,7 +373,7 @@
                 });
               })(pExifDateTime, imgId);
             }
-            return divRow;
+            return divGridRow;
           }
         });
         var divMain = document.getElementById('divMain');
