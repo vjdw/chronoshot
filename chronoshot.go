@@ -59,7 +59,7 @@ func getAssetCountHandler(w http.ResponseWriter, r *http.Request) {
 func getAssetHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	index, err := strconv.ParseUint(id, 10, 64)
-	if err != nil || index < 1 {
+	if err != nil || index < 0 {
 		log.Println(id, "is not a valid id.")
 		http.NotFound(w, r)
 		return

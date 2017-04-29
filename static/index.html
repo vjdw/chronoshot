@@ -3,6 +3,55 @@
     <script type="text/javascript" src="./vlist.js"></script>
     <style>
 
+      .image { 
+        position: relative; 
+        top: 0px; 
+        left: 0; 
+      }
+
+      h2 { 
+        display: inline;
+        position: relative; 
+        top: 0px; 
+        left: 0; 
+        width: 100%; 
+      }
+
+      h2 span { 
+        color: white; 
+        font: bold 24px/45px Helvetica, Sans-Serif; 
+        letter-spacing: -1px;  
+        background: rgb(0, 0, 0); /* fallback color */
+        background: rgba(0, 0, 0, 0.7);
+        padding: 10px; 
+      }
+
+      span { 
+        color: white; 
+        font: bold 24px/45px Helvetica, Sans-Serif; 
+        letter-spacing: -1px;  
+        background: rgb(0, 0, 0); /* fallback color */
+        background: rgba(0, 0, 0, 0.7);
+        padding: 10px; 
+      }
+
+      p { 
+        position:absolute;
+        bottom:-10;
+        left: 0;
+        background:rgba(251,251,251,0.5);
+        padding:0px 0px;
+        width:100%;
+        text-align:center;
+        color: white; 
+        font: bold 12px/18px Helvetica, Sans-Serif; 
+        background: rgba(0, 0, 0, 0.7);
+        border-bottom-left-radius: 20px;
+        border-bottom-right-radius: 20px;
+      }
+
+/***********************/
+
       body {
         margin: 0px;
         padding: 0px;
@@ -22,12 +71,18 @@
       .divGrid
       {
         display: inline;
-        padding: 20px; /* also used in totalColumnCount calculation */
+        position: relative;
+        margin: 20px; /* also used in totalColumnCount calculation */
+      }
+
+      .divImgInfo
+      {
+        display: inline;
       }
 
       .divGridRow
       {
-        padding: 20px 0px;
+        margin: 20px 0px;
       }
 
       .imgThumbnail
@@ -175,6 +230,9 @@
       </div>
     </div>
 
+    <div id="divScrollPosition">
+    </div>
+
     <div id="divMain">
       <!--<div id="divGrid"/>-->
     </div>
@@ -216,6 +274,20 @@
         modalAssetId--;
         modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
         modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
+      }
+
+      function onScroll(e) {		
+        //console.log(document.getElementById('scrollbar').scrollTop);
+ 		
+       // updateThumbnailGridOffset();
+ 		
+        //console.log(e.target.scrollTop);
+
+        // fetch('/getExifDateTime/?id='+1).then(function (response) { // assetIdOfFirstThumbnail).then(function (response) {
+        //   return response.json();
+        //   }).then(function(data) {
+        //     document.getElementById('divScrollPosition').textContent = data.datetime
+        //     });
       }
 
       function initialise() {
@@ -260,33 +332,115 @@
               divGrid.className = "divGrid";
               divRow.appendChild(divGrid);
 
-              var imgThumbnail = document.createElement("img");
-              console.log(row);
-              imgThumbnail.src = "/getThumbnail/?id=" + ((row * totalColumnCount) + column);
-              imgThumbnail.className = "imgThumbnail"
-              imgThumbnail.width = thumbnailSize;
-              imgThumbnail.height = thumbnailSize;
+              var imgId = ((row * totalColumnCount) + column);
 
-              imgThumbnail.onclick = function(r,c) {
-                return function() {
-                  console.log('row = ' + r + ' col = ' + c);
-                  modal.style.display = "block";
-                  modalAssetId = thumbnailMetadata[r][c].assetId;
-                  modalImgCurrent.src = "/getAsset/?id=" + modalAssetId;
+/*
+-        fetch('/getExifDateTime/?id='+assetIdOfFirstThumbnail).then(function (response) {		
+ -            return response.json();		
+ -          }).then(function(data) {		
+ -              document.getElementById('divScrollPosition').textContent = data.datetime		
+ -            });		
+ -      }
+*/
+
+             // var getDiv = function() { return divGrid; };
+             // var divImgInfo = document.createElement("div");
+             // divImgInfo.className = "divImgInfo";
+             // divGrid.innerText = "Loading...";
+
+              // fetch('/getExifDateTime/?id='+imgId).then(function (response) {
+              //   return new Promise(function(resolve, reject) {resolve({j: response.json(), d: getDiv});});
+              // }).then(function(data) {
+              //   console.log('data:' + data.j.datetime);
+              //   data.j.then(function(result){data.d().innerText = result.datetime; });
+              // });
+
+              var ff = function (d, iid, row, column) {
+                fetch('/getExifDateTime/?id='+iid).then(function (response) {
+                  //console.log('data:' + result.datetime);
+                  // response.json().then(function(result){d.innerText = result.datetime; });
+                  response.json().then(function(result){
+                  //  d.innerText = "";
+                    //var h2ImgInfo = document.createElement("h2");
+                    var mySpan = document.createElement("p");
+                    //h2ImgInfo.className = "h2ImgInfo";
+                    mySpan.innerText = result.datetime;
+                    //h2ImgInfo.appendChild(mySpan);
+                    //d.appendChild(h2ImgInfo);
+                    d.appendChild(mySpan);
+                  });
+
+                  var imgThumbnail = document.createElement("img");
+                  console.log('row = ' + row);
+                  imgThumbnail.src = "/getThumbnail/?id=" + iid;
+                  imgThumbnail.className = "imgThumbnail"
+                  imgThumbnail.width = thumbnailSize;
+                  imgThumbnail.height = thumbnailSize;
+
+                  imgThumbnail.onclick = function(r,c) {
+                    return function() {
+                      console.log('row = ' + r + ' col = ' + c);
+                      modal.style.display = "block";
+                      modalAssetId = thumbnailMetadata[r][c].assetId;
+                      modalImgCurrent.src = "/getAsset/?id=" + modalAssetId;
+                          
+                      // Queue up the next images
+                      modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
+                      modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
+                    };
+                  }(row, column);
+
+                  d.appendChild(imgThumbnail);
+
+                // response.json().then(function(result){divGrid.innerText = result.datetime; });
+
+                //return new Promise(function(resolve, reject) {resolve({j: response.json(), d: getDiv});});
+                });
+              };
+              ff(divGrid, imgId, row, column);
+
+              // fetch('/getExifDateTime/?id='+imgId).then(function (response) {
+              //   //console.log('data:' + data.j.datetime);
+              //   function (d) {
+              //     response.json().then(function(result){d.innerText = result.datetime; });
+              //   }(divGrid);
+
+              //   // response.json().then(function(result){divGrid.innerText = result.datetime; });
+
+              //   //return new Promise(function(resolve, reject) {resolve({j: response.json(), d: getDiv});});
+              // });
+
+                
+              //divGrid.appendChild(divImgInfo);
+
+              // var imgThumbnail = document.createElement("img");
+              // console.log('row = ' + row);
+              // imgThumbnail.src = "/getThumbnail/?id=" + imgId;
+              // imgThumbnail.className = "imgThumbnail"
+              // imgThumbnail.width = thumbnailSize;
+              // imgThumbnail.height = thumbnailSize;
+
+              // imgThumbnail.onclick = function(r,c) {
+              //   return function() {
+              //     console.log('row = ' + r + ' col = ' + c);
+              //     modal.style.display = "block";
+              //     modalAssetId = thumbnailMetadata[r][c].assetId;
+              //     modalImgCurrent.src = "/getAsset/?id=" + modalAssetId;
                       
-                  // Queue up the next images
-                  modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
-                  modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
-                };
-              }(row, column);
+              //     // Queue up the next images
+              //     modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
+              //     modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
+              //   };
+              // }(row, column);
 
-              divGrid.appendChild(imgThumbnail);
+              // divGrid.appendChild(imgThumbnail);
             }
             return divRow;
           }
         });
         var divMain = document.getElementById('divMain');
         divMain.appendChild(list.container);
+        list.container.addEventListener('scroll', onScroll);
       }
 
       // Get the <span> element that closes the modal
