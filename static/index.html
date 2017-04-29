@@ -2,56 +2,6 @@
   <head>
     <script type="text/javascript" src="./vlist.js"></script>
     <style>
-
-      .image { 
-        position: relative; 
-        top: 0px; 
-        left: 0; 
-      }
-
-      h2 { 
-        display: inline;
-        position: relative; 
-        top: 0px; 
-        left: 0; 
-        width: 100%; 
-      }
-
-      h2 span { 
-        color: white; 
-        font: bold 24px/45px Helvetica, Sans-Serif; 
-        letter-spacing: -1px;  
-        background: rgb(0, 0, 0); /* fallback color */
-        background: rgba(0, 0, 0, 0.7);
-        padding: 10px; 
-      }
-
-      span { 
-        color: white; 
-        font: bold 24px/45px Helvetica, Sans-Serif; 
-        letter-spacing: -1px;  
-        background: rgb(0, 0, 0); /* fallback color */
-        background: rgba(0, 0, 0, 0.7);
-        padding: 10px; 
-      }
-
-      p { 
-        position:absolute;
-        bottom:-10;
-        left: 0;
-        background:rgba(251,251,251,0.5);
-        padding:0px 0px;
-        width:100%;
-        text-align:center;
-        color: white; 
-        font: bold 12px/18px Helvetica, Sans-Serif; 
-        background: rgba(0, 0, 0, 0.7);
-        border-bottom-left-radius: 20px;
-        border-bottom-right-radius: 20px;
-      }
-
-/***********************/
-
       body {
         margin: 0px;
         padding: 0px;
@@ -68,16 +18,11 @@
         display: inline;
       }
 
-      .divGrid
+      .divGridItem
       {
         display: inline;
         position: relative;
         margin: 20px; /* also used in totalColumnCount calculation */
-      }
-
-      .divImgInfo
-      {
-        display: inline;
       }
 
       .divGridRow
@@ -90,9 +35,19 @@
         border-radius: 10%;
       }
 
-      /***********************************************/
-      /***********************************************/
-      /***********************************************/
+      .pExifDateTime { 
+        position:absolute;
+        bottom:-10px;
+        left: 0px;
+        width:100%;
+        background:rgba(251,251,251,0.5);
+        text-align:center;
+        color: gainsboro;
+        font: bold 12px/18px Helvetica, Sans-Serif; 
+        background: rgba(0, 0, 0, 0.7);
+        border-bottom-left-radius: 20px;
+        border-bottom-right-radius: 20px;
+      }
 
       #myImg {
           border-radius: 5px;
@@ -144,7 +99,7 @@
           -webkit-animation-duration: 0.6s;
           animation-name: zoom;
           animation-duration: 0.6s;
-      }*/
+      }
 
       @-webkit-keyframes zoom {
           from {-webkit-transform:scale(0)} 
@@ -154,7 +109,7 @@
       @keyframes zoom {
           from {transform:scale(0)} 
           to {transform:scale(1)}
-      }
+      }*/
 
       /* The Close Button */
       .close {
@@ -174,6 +129,25 @@
           text-decoration: none;
           cursor: pointer;
       }
+
+      /* The Download Button */
+      .download {
+          position: absolute;
+          z-index: 2;
+          bottom: 15px;
+          right: 35px;
+
+          transition: 0.3s;
+          /*background:rgba(251,251,251,0.5);*/
+          text-align:center;
+          font: bold 18px Helvetica, Sans-Serif;
+          background: rgba(0, 0, 0, 0.7);
+          border-radius: 5px;
+          color: #555
+      }
+
+      .download a:link, .download a:visited {color: #983000;}
+      .download a:hover, .download a:active { color: #fe5000;}
 
       /* 100% Image Width on Smaller Screens */
       @media only screen and (max-width: 700px){
@@ -217,8 +191,8 @@
 
     </style>
   </head>
-  <body>
 
+  <body>
     <div id="divModal" class="modal">
       <span class="close">&times;</span>
       <div class="contentContainer">
@@ -228,6 +202,7 @@
         <img class="modal-content" id="imgModal3">
         <div class="contentNext" onclick="moveModalNext()"></div>
       </div>
+      <div id="divDownload" class="download">download</div>
     </div>
 
     <div id="divScrollPosition">
@@ -239,15 +214,28 @@
 
     <script>
       var totalAssetCount = 0;
-      var divGridPadding = 20; // Must match CSS .divGrid padding
+      var divGridItemPadding = 20; // Must match CSS .divGridItem padding
       var thumbnailSize = 200;
-      var totalColumnCount = Math.floor((window.innerWidth - (2 * divGridPadding)) / (thumbnailSize + (2 * divGridPadding)))
+      var totalColumnCount = Math.floor((window.innerWidth - (2 * divGridItemPadding)) / (thumbnailSize + (2 * divGridItemPadding)))
       var totalRowCount = 0;
       var modalAssetId = -1;
       var thumbnailMetadata = [];
 
-      function sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+      var modal = document.getElementById('divModal');
+      var modalImgPrevious = document.getElementById("imgModal1");
+      var modalImgCurrent = document.getElementById("imgModal2");
+      var modalImgNext = document.getElementById("imgModal3");
+
+      function initialise() {
+        fetch('/getAssetCount').then(function (response) {
+          return response.json();
+        }).then(function(data) {
+          totalAssetCount = data;
+          totalRowCount = totalAssetCount / totalColumnCount;
+          updateThumbnailMetadata();
+          configureVirtualList();
+          initialiseModalCloseButton();
+        });        
       }
 
       function moveModalNext() {
@@ -261,6 +249,7 @@
         modalAssetId++;
         modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
         modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
+        setDownloadLink(modalAssetId);
       }
 
       function moveModalPrevious() {
@@ -274,31 +263,10 @@
         modalAssetId--;
         modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
         modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
+        setDownloadLink(modalAssetId);
       }
 
       function onScroll(e) {		
-        //console.log(document.getElementById('scrollbar').scrollTop);
- 		
-       // updateThumbnailGridOffset();
- 		
-        //console.log(e.target.scrollTop);
-
-        // fetch('/getExifDateTime/?id='+1).then(function (response) { // assetIdOfFirstThumbnail).then(function (response) {
-        //   return response.json();
-        //   }).then(function(data) {
-        //     document.getElementById('divScrollPosition').textContent = data.datetime
-        //     });
-      }
-
-      function initialise() {
-        fetch('/getAssetCount').then(function (response) {
-          return response.json();
-        }).then(function(data) {
-          totalAssetCount = data;
-          totalRowCount = totalAssetCount / totalColumnCount;
-          updateThumbnailMetadata();
-          configureVirtualList();
-        });        
       }
 
       function updateThumbnailMetadata() {
@@ -311,11 +279,35 @@
 
         for (var row = 0; row < totalRowCount; row++) {
           for (var column = 0; column < totalColumnCount; column++) {
-            console.log('row = ' + row + ' col = ' + column);
+            //console.log('row = ' + row + ' col = ' + column);
             var assetId = (row * totalColumnCount) + column;
             thumbnailMetadata[row][column].assetId = assetId;
           }
         }
+      }
+
+      function setDownloadLink(imgId) {
+
+        (function (imgId) {
+                fetch('/getExifDateTime/?id='+imgId).then(function (response) {
+                  response.json().then(function(result) {
+                    var divDownload = document.getElementById('divDownload');
+                    var aDownload = document.createElement("a");
+                    aDownload.href = "/getAsset/?id=" + imgId;
+                    aDownload.download = result.datetime;
+                    aDownload.innerText = result.datetime;
+                    divDownload.innerHTML = "";
+                    divDownload.appendChild(aDownload);
+                  });
+                });
+              })(imgId);
+
+        // var divDownload = document.getElementById('divDownload');
+        // var aDownload = document.createElement("a");
+        // aDownload.href = "/getAsset/?id=" + imgId;
+        // aDownload.innerText = "download";
+        // divDownload.innerHTML = "";
+        // divDownload.appendChild(aDownload);
       }
 
       function configureVirtualList() {
@@ -328,112 +320,46 @@
             var divRow = document.createElement("div");
             divRow.className = "divGridRow"
             for (var column = 0; column < totalColumnCount; column++) {
-              var divGrid = document.createElement("div");
-              divGrid.className = "divGrid";
-              divRow.appendChild(divGrid);
+              var divGridItem = document.createElement("div");
+              divGridItem.className = "divGridItem";
+              divRow.appendChild(divGridItem);
 
               var imgId = ((row * totalColumnCount) + column);
 
-/*
--        fetch('/getExifDateTime/?id='+assetIdOfFirstThumbnail).then(function (response) {		
- -            return response.json();		
- -          }).then(function(data) {		
- -              document.getElementById('divScrollPosition').textContent = data.datetime		
- -            });		
- -      }
-*/
+              // The image thumbnail.
+              var imgThumbnail = document.createElement("img");
+              //console.log('row = ' + imgId);
+              imgThumbnail.src = "/getThumbnail/?id=" + imgId;
+              imgThumbnail.className = "imgThumbnail"
+              imgThumbnail.width = thumbnailSize;
+              imgThumbnail.height = thumbnailSize;
+              imgThumbnail.onclick = function(r,c) {
+                return function() {
+                  //console.log('row = ' + r + ' col = ' + c);
+                  modal.style.display = "block";
+                  modalAssetId = thumbnailMetadata[r][c].assetId;
+                  modalImgCurrent.src = "/getAsset/?id=" + modalAssetId;
+                  // Try to cache the next images
+                  modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
+                  modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
 
-             // var getDiv = function() { return divGrid; };
-             // var divImgInfo = document.createElement("div");
-             // divImgInfo.className = "divImgInfo";
-             // divGrid.innerText = "Loading...";
+                  setDownloadLink(modalAssetId);
+                };
+              }(row, column);
+              divGridItem.appendChild(imgThumbnail);
 
-              // fetch('/getExifDateTime/?id='+imgId).then(function (response) {
-              //   return new Promise(function(resolve, reject) {resolve({j: response.json(), d: getDiv});});
-              // }).then(function(data) {
-              //   console.log('data:' + data.j.datetime);
-              //   data.j.then(function(result){data.d().innerText = result.datetime; });
-              // });
-
-              var ff = function (d, iid, row, column) {
-                fetch('/getExifDateTime/?id='+iid).then(function (response) {
-                  //console.log('data:' + result.datetime);
-                  // response.json().then(function(result){d.innerText = result.datetime; });
-                  response.json().then(function(result){
-                  //  d.innerText = "";
-                    //var h2ImgInfo = document.createElement("h2");
-                    var mySpan = document.createElement("p");
-                    //h2ImgInfo.className = "h2ImgInfo";
-                    mySpan.innerText = result.datetime;
-                    //h2ImgInfo.appendChild(mySpan);
-                    //d.appendChild(h2ImgInfo);
-                    d.appendChild(mySpan);
+              // The exif datetime element.
+              var pExifDateTime = document.createElement("p");
+              pExifDateTime.className = "pExifDateTime";
+              pExifDateTime.innerText = "...";
+              divGridItem.appendChild(pExifDateTime);
+              (function (pExifDateTime, imgId) {
+                fetch('/getExifDateTime/?id='+imgId).then(function (response) {
+                  response.json().then(function(result) {
+                    pExifDateTime.innerText = result.datetime;
                   });
-
-                  var imgThumbnail = document.createElement("img");
-                  console.log('row = ' + row);
-                  imgThumbnail.src = "/getThumbnail/?id=" + iid;
-                  imgThumbnail.className = "imgThumbnail"
-                  imgThumbnail.width = thumbnailSize;
-                  imgThumbnail.height = thumbnailSize;
-
-                  imgThumbnail.onclick = function(r,c) {
-                    return function() {
-                      console.log('row = ' + r + ' col = ' + c);
-                      modal.style.display = "block";
-                      modalAssetId = thumbnailMetadata[r][c].assetId;
-                      modalImgCurrent.src = "/getAsset/?id=" + modalAssetId;
-                          
-                      // Queue up the next images
-                      modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
-                      modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
-                    };
-                  }(row, column);
-
-                  d.appendChild(imgThumbnail);
-
-                // response.json().then(function(result){divGrid.innerText = result.datetime; });
-
-                //return new Promise(function(resolve, reject) {resolve({j: response.json(), d: getDiv});});
                 });
-              };
-              ff(divGrid, imgId, row, column);
-
-              // fetch('/getExifDateTime/?id='+imgId).then(function (response) {
-              //   //console.log('data:' + data.j.datetime);
-              //   function (d) {
-              //     response.json().then(function(result){d.innerText = result.datetime; });
-              //   }(divGrid);
-
-              //   // response.json().then(function(result){divGrid.innerText = result.datetime; });
-
-              //   //return new Promise(function(resolve, reject) {resolve({j: response.json(), d: getDiv});});
-              // });
-
-                
-              //divGrid.appendChild(divImgInfo);
-
-              // var imgThumbnail = document.createElement("img");
-              // console.log('row = ' + row);
-              // imgThumbnail.src = "/getThumbnail/?id=" + imgId;
-              // imgThumbnail.className = "imgThumbnail"
-              // imgThumbnail.width = thumbnailSize;
-              // imgThumbnail.height = thumbnailSize;
-
-              // imgThumbnail.onclick = function(r,c) {
-              //   return function() {
-              //     console.log('row = ' + r + ' col = ' + c);
-              //     modal.style.display = "block";
-              //     modalAssetId = thumbnailMetadata[r][c].assetId;
-              //     modalImgCurrent.src = "/getAsset/?id=" + modalAssetId;
-                      
-              //     // Queue up the next images
-              //     modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
-              //     modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
-              //   };
-              // }(row, column);
-
-              // divGrid.appendChild(imgThumbnail);
+              })(pExifDateTime, imgId);
             }
             return divRow;
           }
@@ -443,16 +369,14 @@
         list.container.addEventListener('scroll', onScroll);
       }
 
-      // Get the <span> element that closes the modal
-      var modal = document.getElementById('divModal');
-      var modalImgPrevious = document.getElementById("imgModal1");
-      var modalImgCurrent = document.getElementById("imgModal2");
-      var modalImgNext = document.getElementById("imgModal3");
-      modalImgPrevious.style.display = "none";
-      modalImgNext.style.display = "none";
-      var span = document.getElementsByClassName("close")[0];
-      span.onclick = function() { 
-        modal.style.display = "none";
+      function initialiseModalCloseButton() {
+        // Get the <span> element that closes the modal
+        modalImgPrevious.style.display = "none";
+        modalImgNext.style.display = "none";
+        var span = document.getElementsByClassName("close")[0];
+        span.onclick = function() { 
+          modal.style.display = "none";
+        }
       }
 
       initialise();
