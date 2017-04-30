@@ -211,6 +211,7 @@
     </div>
 
     <div id="divScrollPosition">
+      <span id="spanDateTime"></span>
     </div>
 
     <div id="divMain">
@@ -228,12 +229,18 @@
       var modalAssetId = -1;
       var thumbnailMetadata = [];
 
+      var visibleImgId = 0
+
       var modal = document.getElementById('divModal');
       var modalImgPrevious = document.getElementById("imgModal1");
       var modalImgCurrent = document.getElementById("imgModal2");
       var modalImgNext = document.getElementById("imgModal3");
 
-      function initialise() {
+      function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+
+      async function initialise() {
         fetch('/getAssetCount').then(function (response) {
           return response.json();
         }).then(function(data) {
@@ -242,6 +249,7 @@
           updateThumbnailMetadata();
           configureVirtualList();
           initialiseModalCloseButton();
+          updateDateTime();
         });        
       }
 
@@ -273,7 +281,22 @@
         setDownloadLink(modalAssetId);
       }
 
-      function onScroll(e) {		
+      var previousOnScroll = Date.now();
+      function onScroll(e) {
+        var now = Date.now();
+        if (now - previousOnScroll > 250) {
+          updateDateTime();
+          previousOnScroll = now;
+        }
+      }
+
+      function updateDateTime() {
+        fetch('/getExifDateTime/?id='+visibleImgId).then(function (response) {
+          response.json().then(function(result) {
+            var spanDateTime = document.getElementById('spanDateTime');
+            spanDateTime.innerText = result.datetime;
+          });
+        });
       }
 
       function updateThumbnailMetadata() {
@@ -308,22 +331,16 @@
                   });
                 });
               })(imgId);
-
-        // var divDownload = document.getElementById('divDownload');
-        // var aDownload = document.createElement("a");
-        // aDownload.href = "/getAsset/?id=" + imgId;
-        // aDownload.innerText = "download";
-        // divDownload.innerHTML = "";
-        // divDownload.appendChild(aDownload);
       }
 
-      function configureVirtualList() {
+      async function configureVirtualList() {
         var list = new VirtualList({
           w: window.innerWidth,
           h: window.innerHeight,
           itemHeight: 240,
           totalRows: totalRowCount,
           generatorFn: function(row) {
+            visibleImgId = row * totalColumnCount;
             var divGridRow = document.createElement("div");
             divGridRow.className = "divGridRow"
 
@@ -365,13 +382,17 @@
               pExifDateTime.className = "pExifDateTime";
               pExifDateTime.innerText = "...";
               divGridItem.appendChild(pExifDateTime);
-              (function (pExifDateTime, imgId) {
-                fetch('/getExifDateTime/?id='+imgId).then(function (response) {
-                  response.json().then(function(result) {
-                    pExifDateTime.innerText = result.datetime;
+              (async function (pExifDateTime, imgId, divGridRow) {
+                // Avoid calling getExifDateTime for every row that whizzes by.
+                await sleep(750);
+                if (document.body.contains(divGridRow)) {
+                  fetch('/getExifDateTime/?id='+imgId).then(function (response) {
+                    response.json().then(function(result) {
+                      pExifDateTime.innerText = result.datetime;
+                    });
                   });
-                });
-              })(pExifDateTime, imgId);
+                }
+              })(pExifDateTime, imgId, divGridRow);
             }
             return divGridRow;
           }
