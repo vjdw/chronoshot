@@ -24,8 +24,14 @@ type assetInfo struct {
 	DateTime  time.Time
 }
 
+type selection struct {
+	AssetID    uint64
+	IsSelected bool
+}
+
 var chanPutAsset = make(chan assetKvp)
 var chanRebuildIndex = make(chan bool)
+var chanPutSelection = make(chan selection)
 var isDirtyIndex = true
 
 func Init() {
@@ -45,6 +51,10 @@ func Init() {
 			return err
 		}
 		_, err = tx.CreateBucketIfNotExists([]byte("assets"))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte("selections"))
 		if err != nil {
 			return err
 		}
@@ -68,6 +78,8 @@ func writeChannelsMonitor() {
 			//fmt.Printf("Put in database: %s\n", assetKvp.Key)
 		case <-chanRebuildIndex:
 			rebuildIndex()
+		case selection := <-chanPutSelection:
+			putSelection(selection)
 		}
 	}
 }
@@ -96,6 +108,41 @@ func putAsset(kvp assetKvp) {
 		}
 
 		return b.Put(kvp.Key, serialisedAssetInfo)
+	})
+	db.Close()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func PutSelection(assetId uint64, isSelected bool) {
+	chanPutSelection <- selection{assetId, isSelected}
+}
+
+func putSelection(s selection) {
+	db, err := bolt.Open("chronoshot.db", 0777, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer db.Close()
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("selections"))
+		if err != nil {
+			return err
+		}
+
+		if s.IsSelected {
+			serialisedSelection, err := serialise(s.IsSelected)
+			if err != nil {
+				log.Fatal(err)
+			}
+			return b.Put(itob(s.AssetID), serialisedSelection)
+		} else {
+			return b.Delete(itob(s.AssetID))
+		}
 	})
 	db.Close()
 
@@ -256,6 +303,26 @@ func GetDateTimeByIndex(i uint64) time.Time {
 	}
 
 	return dateTime
+}
+
+func GetIsSelectedByIndex(i uint64) bool {
+	db, err := bolt.Open("chronoshot.db", 0777, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	var isSelected bool
+	err = db.View(func(tx *bolt.Tx) error {
+		selections := tx.Bucket([]byte("selections"))
+		isSelected = selections.Get(itob(i)) != nil
+		return nil
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return isSelected
 }
 
 func GetAssetPathByIndex(i uint64) []byte {

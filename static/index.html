@@ -40,7 +40,7 @@
         border-radius: 10%;
       }
 
-      .pExifDateTime { 
+      .pExifDateTime {
         position:absolute;
         bottom:-10px;
         left: 0px;
@@ -48,7 +48,7 @@
         background:rgba(251,251,251,0.5);
         text-align:center;
         color: gainsboro;
-        font: bold 12px/18px Helvetica, Sans-Serif; 
+        font: bold 12px/18px Helvetica, Sans-Serif;
         background: rgba(0, 0, 0, 0.7);
         border-bottom-left-radius: 20px;
         border-bottom-right-radius: 20px;
@@ -99,7 +99,7 @@
       }
 
       /* Add Animation */
-      /*.modal-content, #caption {    
+      /*.modal-content, #caption {
           -webkit-animation-name: zoom;
           -webkit-animation-duration: 0.6s;
           animation-name: zoom;
@@ -107,12 +107,12 @@
       }
 
       @-webkit-keyframes zoom {
-          from {-webkit-transform:scale(0)} 
+          from {-webkit-transform:scale(0)}
           to {-webkit-transform:scale(1)}
       }
 
       @keyframes zoom {
-          from {transform:scale(0)} 
+          from {transform:scale(0)}
           to {transform:scale(1)}
       }*/
 
@@ -130,6 +130,25 @@
 
       .close:hover,
       .close:focus {
+          color: #bbb;
+          text-decoration: none;
+          cursor: pointer;
+      }
+
+      /* The Select Button */
+      .select {
+          position: absolute;
+          z-index: 2;
+          top: 15px;
+          left: 35px;
+          color: #f1f1f1;
+          font-size: 40px;
+          font-weight: bold;
+          transition: 0.3s;
+      }
+
+      .select:hover,
+      .select:focus {
           color: #bbb;
           text-decoration: none;
           cursor: pointer;
@@ -200,6 +219,8 @@
   <body>
     <div id="divModal" class="modal">
       <span class="close">&times;</span>
+      <span id="spanSelect" class="select">☆</span>
+      <!--★-->
       <div class="contentContainer">
         <div class="contentPrevious" onclick="moveModalPrevious()"></div>
         <img class="modal-content" id="imgModal1">
@@ -227,8 +248,11 @@
       var leftPaddingToCentraliseGrid = (window.innerWidth - (totalColumnCount * thumbnailOuterSize) - (2 * divGridItemPadding)) / 2;
       var totalRowCount = 0;
       var modalAssetId = -1;
+      var modalAssetIsSelected = false;
       var thumbnailMetadata = [];
 
+      // The thumbnail most recently loaded from server,
+      // only for an estimate of currently visible datetime.
       var visibleImgId = 0
 
       var modal = document.getElementById('divModal');
@@ -248,9 +272,9 @@
           totalRowCount = totalAssetCount / totalColumnCount;
           updateThumbnailMetadata();
           configureVirtualList();
-          initialiseModalCloseButton();
+          initialiseModalButtons();
           updateDateTime();
-        });        
+        });
       }
 
       function moveModalNext() {
@@ -264,7 +288,7 @@
         modalAssetId++;
         modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
         modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
-        setDownloadLink(modalAssetId);
+        updateModalDetails(modalAssetId);
       }
 
       function moveModalPrevious() {
@@ -278,7 +302,7 @@
         modalAssetId--;
         modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
         modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
-        setDownloadLink(modalAssetId);
+        updateModalDetails(modalAssetId);
       }
 
       var previousOnScroll = Date.now();
@@ -316,8 +340,7 @@
         }
       }
 
-      function setDownloadLink(imgId) {
-
+      function updateModalDetails(imgId) {
         (function (imgId) {
                 fetch('/getExifDateTime/?id='+imgId).then(function (response) {
                   response.json().then(function(result) {
@@ -328,6 +351,16 @@
                     aDownload.innerText = result.datetime;
                     divDownload.innerHTML = "";
                     divDownload.appendChild(aDownload);
+                  });
+                });
+              })(imgId);
+
+        (function (imgId) {
+                fetch('/select/?id='+imgId).then(function (response) {
+                  response.json().then(function(result) {
+                    modalAssetIsSelected = result.isSelected;
+                    var spanSelected = document.getElementById('spanSelect')
+                    spanSelected.innerText = modalAssetIsSelected ? "★" : "☆";
                   });
                 });
               })(imgId);
@@ -372,7 +405,7 @@
                   modalImgNext.src = "/getAsset/?id=" + (modalAssetId + 1);
                   modalImgPrevious.src = "/getAsset/?id=" + (modalAssetId - 1);
 
-                  setDownloadLink(modalAssetId);
+                  updateModalDetails(modalAssetId);
                 };
               }(row, column);
               divGridItem.appendChild(imgThumbnail);
@@ -402,13 +435,26 @@
         list.container.addEventListener('scroll', onScroll);
       }
 
-      function initialiseModalCloseButton() {
+      function initialiseModalButtons() {
         // Get the <span> element that closes the modal
         modalImgPrevious.style.display = "none";
         modalImgNext.style.display = "none";
         var span = document.getElementsByClassName("close")[0];
-        span.onclick = function() { 
+        span.onclick = function() {
           modal.style.display = "none";
+        }
+
+        // Get the <span> element that selects a photo
+        var span = document.getElementsByClassName("select")[0];
+        span.onclick = async function() {
+          //var form = new FormData(document.getElementById('login-form'));
+          modalAssetIsSelected = !modalAssetIsSelected;
+          await fetch("/select/", {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({assetID: modalAssetId, isSelected: modalAssetIsSelected})
+          });
+          updateModalDetails(modalAssetId);
         }
       }
 

@@ -126,6 +126,46 @@ func getExifDateTimeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type selection struct {
+	AssetID    uint64
+	IsSelected bool
+}
+
+func selectHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		id := r.URL.Query().Get("id")
+		index, err := strconv.ParseUint(id, 10, 64)
+		if err != nil || index < 0 {
+			log.Println(id, "is not a valid id.")
+			http.NotFound(w, r)
+			return
+		}
+
+		isSelected := db.GetIsSelectedByIndex(index)
+		buf, err := json.Marshal(map[string]bool{"isSelected": isSelected})
+		if err != nil {
+			log.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", strconv.Itoa(len(buf)))
+		if _, err := w.Write(buf); err != nil {
+			log.Println("unable to write response.")
+		}
+	}
+	if r.Method == "POST" {
+		//body, err := ioutil.ReadAll(r.Body)
+		//log.Println(string(body))
+		decoder := json.NewDecoder(r.Body)
+		var s selection
+		err := decoder.Decode(&s)
+		if err != nil {
+			panic(err)
+		}
+		defer r.Body.Close()
+		db.PutSelection(s.AssetID, s.IsSelected)
+	}
+}
+
 func updateDatabaseHandler(w http.ResponseWriter, r *http.Request) {
 	db.RebuildIndex()
 }
@@ -289,7 +329,7 @@ func main() {
 	go logChannelMonitor()
 	db.Init()
 
-	dir := "/home/vin/Desktop/scratch"
+	dir := "/home/vin/Desktop"
 	//dir := "/media/data/photos"
 	//dir := "/home/vin/go/src/github.com/h2non/bimg/fixtures"
 	if len(os.Args) > 1 {
@@ -318,6 +358,7 @@ func main() {
 	http.HandleFunc("/getExifDateTime/", getExifDateTimeHandler)
 	http.HandleFunc("/getAsset/", getAssetHandler)
 	http.HandleFunc("/getAssetCount/", getAssetCountHandler)
+	http.HandleFunc("/select/", selectHandler)
 	http.HandleFunc("/updateDatabase/", updateDatabaseHandler)
 	go http.ListenAndServe(":8080", nil)
 	fmt.Println("Webserver ready.")
