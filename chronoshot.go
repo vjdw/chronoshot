@@ -56,15 +56,80 @@ func getAssetCountHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type asset struct {
+	AssetKey string
+	//IsSelected bool
+}
+
+func getAllAssetMetadataHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	//var allAssetsCount = db.GetLengthOfIndex()
+	//allAssets := make([]asset, 10, 10) // allAssetsCount)
+
+	allAssets := db.GetAllAssetKeys()
+
+	// response := strconv.Itoa(db.GetLengthOfIndex())
+	// w.Header().Set("Content-Length", strconv.Itoa(len(response)))
+	// if _, err := w.Write([]byte(response)); err != nil {
+	// 	log.Println("unable to write response.")
+	// }
+
+	//buf, err := json.Marshal(map[string]time.Time{"datetime": dateTime})
+	buf, err := json.Marshal(allAssets)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(buf)))
+	if _, err := w.Write(buf); err != nil {
+		log.Println("unable to write response.")
+	}
+}
+
+// func getAssetHandler(w http.ResponseWriter, r *http.Request) {
+// 	id := r.URL.Query().Get("id")
+// 	index, err := strconv.ParseUint(id, 10, 64)
+// 	if err != nil || index < 0 {
+// 		log.Println(id, "is not a valid id.")
+// 		http.NotFound(w, r)
+// 		return
+// 	}
+// 	imgPath := db.GetAssetPathByIndex(index)
+// 	log.Println("Requested asset:", string(imgPath))
+
+// 	f, err := os.Open(string(imgPath[:]))
+// 	if err != nil {
+// 		log.Println("Could not open file", string(imgPath[:]))
+// 		http.NotFound(w, r)
+// 		return
+// 	}
+
+// 	var buf bytes.Buffer
+// 	_, err = buf.ReadFrom(f)
+// 	if err != nil {
+// 		log.Println("Could not read file", string(imgPath[:]))
+// 		http.NotFound(w, r)
+// 		return
+// 	}
+
+// 	w.Header().Set("Content-Type", "image/jpeg")
+// 	w.Header().Set("Content-Length", strconv.Itoa(len(buf.Bytes())))
+// 	if _, err := w.Write(buf.Bytes()); err != nil {
+// 		log.Println("unable to write image.")
+// 	}
+// }
 func getAssetHandler(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
-	index, err := strconv.ParseUint(id, 10, 64)
-	if err != nil || index < 0 {
-		log.Println(id, "is not a valid id.")
+	key := r.URL.Query().Get("id")
+
+	if !db.KeyExists([]byte(key)) {
+		log.Println("Key does not exist ", string(key))
 		http.NotFound(w, r)
 		return
 	}
-	imgPath := db.GetAssetPathByIndex(index)
+
+	imgPath := db.GetAssetPath([]byte(key))
 	log.Println("Requested asset:", string(imgPath))
 
 	f, err := os.Open(string(imgPath[:]))
@@ -89,14 +154,31 @@ func getAssetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// func getThumbnailHandler(w http.ResponseWriter, r *http.Request) {
+// 	id := r.URL.Query().Get("id")
+// 	index, err := strconv.ParseUint(id, 10, 64)
+// 	if err != nil {
+// 		http.NotFound(w, r)
+// 		return
+// 	}
+// 	buf := db.GetThumbnailByIndex(index)
+
+// 	w.Header().Set("Content-Type", "image/jpeg")
+// 	w.Header().Set("Content-Length", strconv.Itoa(len(buf)))
+// 	if _, err := w.Write(buf); err != nil {
+// 		log.Println("unable to write image.")
+// 	}
+// }
 func getThumbnailHandler(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
-	index, err := strconv.ParseUint(id, 10, 64)
-	if err != nil {
+	key := r.URL.Query().Get("id")
+
+	if !db.KeyExists([]byte(key)) {
+		log.Println("Key does not exist ", string(key))
 		http.NotFound(w, r)
 		return
 	}
-	buf := db.GetThumbnailByIndex(index)
+
+	buf := db.GetThumbnail([]byte(key))
 
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Content-Length", strconv.Itoa(len(buf)))
@@ -105,15 +187,36 @@ func getThumbnailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// func getExifDateTimeHandler(w http.ResponseWriter, r *http.Request) {
+// 	id := r.URL.Query().Get("id")
+// 	index, err := strconv.ParseUint(id, 10, 64)
+// 	if err != nil {
+// 		http.NotFound(w, r)
+// 		return
+// 	}
+
+// 	dateTime := db.GetDateTimeByIndex(index)
+// 	buf, err := json.Marshal(map[string]time.Time{"datetime": dateTime})
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+
+// 	w.Header().Set("Content-Type", "text/plain")
+// 	w.Header().Set("Content-Length", strconv.Itoa(len(buf)))
+// 	if _, err := w.Write(buf); err != nil {
+// 		log.Println("unable to write response.")
+// 	}
+// }
 func getExifDateTimeHandler(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
-	index, err := strconv.ParseUint(id, 10, 64)
-	if err != nil {
+	key := r.URL.Query().Get("id")
+
+	if !db.KeyExists([]byte(key)) {
+		log.Println("Key does not exist ", string(key))
 		http.NotFound(w, r)
 		return
 	}
 
-	dateTime := db.GetDateTimeByIndex(index)
+	dateTime := db.GetDateTime([]byte(key))
 	buf, err := json.Marshal(map[string]time.Time{"datetime": dateTime})
 	if err != nil {
 		log.Fatal(err)
@@ -127,21 +230,21 @@ func getExifDateTimeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type selection struct {
-	AssetID    uint64
+	AssetKey   string
 	IsSelected bool
 }
 
 func selectHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
-		id := r.URL.Query().Get("id")
-		index, err := strconv.ParseUint(id, 10, 64)
-		if err != nil || index < 0 {
-			log.Println(id, "is not a valid id.")
+		key := r.URL.Query().Get("id")
+
+		if !db.KeyExists([]byte(key)) {
+			log.Println("Key does not exist ", string(key))
 			http.NotFound(w, r)
 			return
 		}
 
-		isSelected := db.GetIsSelectedByIndex(index)
+		isSelected := db.GetIsSelected([]byte(key))
 		buf, err := json.Marshal(map[string]bool{"isSelected": isSelected})
 		if err != nil {
 			log.Fatal(err)
@@ -162,7 +265,7 @@ func selectHandler(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 		defer r.Body.Close()
-		db.PutSelection(s.AssetID, s.IsSelected)
+		db.PutSelection([]byte(s.AssetKey), s.IsSelected)
 	}
 }
 
@@ -358,6 +461,7 @@ func main() {
 	http.HandleFunc("/getExifDateTime/", getExifDateTimeHandler)
 	http.HandleFunc("/getAsset/", getAssetHandler)
 	http.HandleFunc("/getAssetCount/", getAssetCountHandler)
+	http.HandleFunc("/getAllAssetMetadata/", getAllAssetMetadataHandler)
 	http.HandleFunc("/select/", selectHandler)
 	http.HandleFunc("/updateDatabase/", updateDatabaseHandler)
 	go http.ListenAndServe(":8080", nil)

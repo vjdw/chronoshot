@@ -2,6 +2,8 @@ package db
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
@@ -19,13 +21,14 @@ type assetKvp struct {
 }
 
 type assetInfo struct {
+	KeyHash   []byte
 	Path      []byte
 	Thumbnail []byte
 	DateTime  time.Time
 }
 
 type selection struct {
-	AssetID    uint64
+	AssetKey   []byte
 	IsSelected bool
 }
 
@@ -46,11 +49,15 @@ func Init() {
 		if err != nil {
 			return err
 		}
-		_, err := tx.CreateBucketIfNotExists([]byte("viewIndex"))
+		// _, err := tx.CreateBucketIfNotExists([]byte("viewIndex"))
+		// if err != nil {
+		// 	return err
+		// }
+		_, err = tx.CreateBucketIfNotExists([]byte("assets"))
 		if err != nil {
 			return err
 		}
-		_, err = tx.CreateBucketIfNotExists([]byte("assets"))
+		_, err = tx.CreateBucketIfNotExists([]byte("assetsLookup"))
 		if err != nil {
 			return err
 		}
@@ -85,7 +92,13 @@ func writeChannelsMonitor() {
 }
 
 func PutAsset(key []byte, path []byte, thumbnail []byte, dateTime time.Time) {
-	chanPutAsset <- assetKvp{key, assetInfo{path, thumbnail, dateTime}}
+
+	hasher := md5.New()
+	hasher.Write(key)
+	keyHash := hasher.Sum(nil)
+	keyHashStr := []byte(base64.URLEncoding.EncodeToString(keyHash))
+
+	chanPutAsset <- assetKvp{key, assetInfo{keyHashStr, path, thumbnail, dateTime}}
 }
 
 func putAsset(kvp assetKvp) {
@@ -98,6 +111,12 @@ func putAsset(kvp assetKvp) {
 
 	err = db.Update(func(tx *bolt.Tx) error {
 		isDirtyIndex = true
+
+		hasher := md5.New()
+		hasher.Write(kvp.Key)
+		keyHash := hasher.Sum(nil)
+		keyHashStr := base64.URLEncoding.EncodeToString(keyHash)
+
 		b := tx.Bucket([]byte("assets"))
 		if err != nil {
 			return err
@@ -106,8 +125,21 @@ func putAsset(kvp assetKvp) {
 		if err != nil {
 			log.Fatal(err)
 		}
+		err = b.Put(kvp.Key, serialisedAssetInfo)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-		return b.Put(kvp.Key, serialisedAssetInfo)
+		b = tx.Bucket([]byte("assetsLookup"))
+		if err != nil {
+			return err
+		}
+		err = b.Put([]byte(keyHashStr), kvp.Key)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		return err
 	})
 	db.Close()
 
@@ -116,8 +148,8 @@ func putAsset(kvp assetKvp) {
 	}
 }
 
-func PutSelection(assetId uint64, isSelected bool) {
-	chanPutSelection <- selection{assetId, isSelected}
+func PutSelection(assetKey []byte, isSelected bool) {
+	chanPutSelection <- selection{assetKey, isSelected}
 }
 
 func putSelection(s selection) {
@@ -139,9 +171,9 @@ func putSelection(s selection) {
 			if err != nil {
 				log.Fatal(err)
 			}
-			return b.Put(itob(s.AssetID), serialisedSelection)
+			return b.Put(s.AssetKey, serialisedSelection)
 		} else {
-			return b.Delete(itob(s.AssetID))
+			return b.Delete(s.AssetKey)
 		}
 	})
 	db.Close()
@@ -181,8 +213,12 @@ func GetThumbnail(key []byte) []byte {
 
 	var buf []byte
 	err = db.View(func(tx *bolt.Tx) error {
+
+		assetsLookup := tx.Bucket([]byte("assetsLookup"))
+		assetKey := assetsLookup.Get(key)
+
 		b := tx.Bucket([]byte("assets"))
-		info, err := deserialiseAssetInfo(b.Get(key))
+		info, err := deserialiseAssetInfo(b.Get(assetKey))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -206,19 +242,19 @@ func KeyExists(key []byte) bool {
 	}
 	defer db.Close()
 
-	var buf []byte
+	exists := false
 	err = db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("assets"))
-		if b != nil {
-			buf = b.Get(key)
-		}
+
+		assetsLookup := tx.Bucket([]byte("assetsLookup"))
+		assetKey := assetsLookup.Get(key)
+		exists = assetKey != nil
 		return nil
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	return buf != nil
+	return exists
 }
 
 func FilePathAdded(filepath []byte) bool {
@@ -243,39 +279,69 @@ func FilePathAdded(filepath []byte) bool {
 	return buf != nil
 }
 
-func GetThumbnailByIndex(i uint64) []byte {
-	db, err := bolt.Open("chronoshot.db", 0777, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
+// func GetThumbnailByIndex(i uint64) []byte {
+// 	db, err := bolt.Open("chronoshot.db", 0777, nil)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+// 	defer db.Close()
 
-	var buf []byte
-	err = db.View(func(tx *bolt.Tx) error {
-		viewIndex := tx.Bucket([]byte("viewIndex"))
-		assetKey := viewIndex.Get(itob(i))
+// 	var buf []byte
+// 	err = db.View(func(tx *bolt.Tx) error {
+// 		viewIndex := tx.Bucket([]byte("viewIndex"))
+// 		assetKey := viewIndex.Get(itob(i))
 
-		if assetKey != nil {
-			assets := tx.Bucket([]byte("assets"))
-			info, err := deserialiseAssetInfo(assets.Get(assetKey))
-			if err != nil {
-				log.Fatal(err)
-			}
-			buf = info.Thumbnail
-		}
-		return nil
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
+// 		if assetKey != nil {
+// 			assets := tx.Bucket([]byte("assets"))
+// 			info, err := deserialiseAssetInfo(assets.Get(assetKey))
+// 			if err != nil {
+// 				log.Fatal(err)
+// 			}
+// 			buf = info.Thumbnail
+// 		}
+// 		return nil
+// 	})
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
 
-	// buf is lost on return because of db.Close()
-	bufCopy := make([]byte, len(buf), (cap(buf)+1)*2)
-	copy(bufCopy, buf)
-	return bufCopy
-}
+// 	// buf is lost on return because of db.Close()
+// 	bufCopy := make([]byte, len(buf), (cap(buf)+1)*2)
+// 	copy(bufCopy, buf)
+// 	return bufCopy
+// }
 
-func GetDateTimeByIndex(i uint64) time.Time {
+// func GetDateTimeByIndex(i uint64) time.Time {
+// 	db, err := bolt.Open("chronoshot.db", 0777, nil)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+// 	defer db.Close()
+
+// 	var dateTime time.Time
+// 	err = db.View(func(tx *bolt.Tx) error {
+
+// 		viewIndex := tx.Bucket([]byte("viewIndex"))
+// 		assetKey := viewIndex.Get(itob(i))
+
+// 		if assetKey != nil {
+// 			assets := tx.Bucket([]byte("assets"))
+// 			info, err := deserialiseAssetInfo(assets.Get(assetKey))
+// 			if err != nil {
+// 				log.Fatal(err)
+// 			}
+// 			dateTime = info.DateTime
+// 		}
+// 		return nil
+// 	})
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+
+// 	return dateTime
+// }
+
+func GetDateTime(key []byte) time.Time {
 	db, err := bolt.Open("chronoshot.db", 0777, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -284,11 +350,10 @@ func GetDateTimeByIndex(i uint64) time.Time {
 
 	var dateTime time.Time
 	err = db.View(func(tx *bolt.Tx) error {
+		if key != nil {
+			assetsLookup := tx.Bucket([]byte("assetsLookup"))
+			assetKey := assetsLookup.Get(key)
 
-		viewIndex := tx.Bucket([]byte("viewIndex"))
-		assetKey := viewIndex.Get(itob(i))
-
-		if assetKey != nil {
 			assets := tx.Bucket([]byte("assets"))
 			info, err := deserialiseAssetInfo(assets.Get(assetKey))
 			if err != nil {
@@ -305,7 +370,27 @@ func GetDateTimeByIndex(i uint64) time.Time {
 	return dateTime
 }
 
-func GetIsSelectedByIndex(i uint64) bool {
+// func GetIsSelectedByIndex(i uint64) bool {
+// 	db, err := bolt.Open("chronoshot.db", 0777, nil)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+// 	defer db.Close()
+
+// 	var isSelected bool
+// 	err = db.View(func(tx *bolt.Tx) error {
+// 		selections := tx.Bucket([]byte("selections"))
+// 		isSelected = selections.Get(itob(i)) != nil
+// 		return nil
+// 	})
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+
+// 	return isSelected
+// }
+
+func GetIsSelected(key []byte) bool {
 	db, err := bolt.Open("chronoshot.db", 0777, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -315,7 +400,7 @@ func GetIsSelectedByIndex(i uint64) bool {
 	var isSelected bool
 	err = db.View(func(tx *bolt.Tx) error {
 		selections := tx.Bucket([]byte("selections"))
-		isSelected = selections.Get(itob(i)) != nil
+		isSelected = selections.Get(key) != nil
 		return nil
 	})
 	if err != nil {
@@ -325,19 +410,50 @@ func GetIsSelectedByIndex(i uint64) bool {
 	return isSelected
 }
 
-func GetAssetPathByIndex(i uint64) []byte {
+// func GetAssetPathByIndex(i uint64) []byte {
+// 	db, err := bolt.Open("chronoshot.db", 0777, nil)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+// 	defer db.Close()
+
+// 	var assetKey []byte
+// 	var assetValue []byte
+// 	err = db.View(func(tx *bolt.Tx) error {
+
+// 		viewIndex := tx.Bucket([]byte("viewIndex"))
+// 		assetKey = viewIndex.Get(itob(i))
+
+// 		assets := tx.Bucket([]byte("assets"))
+// 		info, err := deserialiseAssetInfo(assets.Get(assetKey))
+// 		if err != nil {
+// 			log.Fatal(err)
+// 		}
+// 		assetValue = info.Path
+
+// 		return nil
+// 	})
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+
+// 	// assetValue is lost on return because of db.Close()
+// 	assetValueCopy := make([]byte, len(assetValue), (cap(assetValue)+1)*2)
+// 	copy(assetValueCopy, assetValue)
+// 	return assetValueCopy
+// }
+
+func GetAssetPath(key []byte) []byte {
 	db, err := bolt.Open("chronoshot.db", 0777, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	var assetKey []byte
 	var assetValue []byte
 	err = db.View(func(tx *bolt.Tx) error {
-
-		viewIndex := tx.Bucket([]byte("viewIndex"))
-		assetKey = viewIndex.Get(itob(i))
+		assetsLookup := tx.Bucket([]byte("assetsLookup"))
+		assetKey := assetsLookup.Get(key)
 
 		assets := tx.Bucket([]byte("assets"))
 		info, err := deserialiseAssetInfo(assets.Get(assetKey))
@@ -351,10 +467,11 @@ func GetAssetPathByIndex(i uint64) []byte {
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	fmt.Println("xyzzy1", string(assetValue))
 	// assetValue is lost on return because of db.Close()
 	assetValueCopy := make([]byte, len(assetValue), (cap(assetValue)+1)*2)
 	copy(assetValueCopy, assetValue)
+	fmt.Println("xyzzy2", string(assetValueCopy))
 	return assetValueCopy
 }
 
@@ -383,17 +500,17 @@ func rebuildIndex() {
 		fmt.Print("Rebuilding index... ")
 		isDirtyIndex = false
 
-		viewIndex := tx.Bucket([]byte("viewIndex"))
-		err = viewIndex.ForEach(func(k, v []byte) error {
-			err := viewIndex.Delete(k)
-			if err != nil {
-				return err
-			}
-			return nil
-		})
-		if err != nil {
-			return err
-		}
+		// viewIndex := tx.Bucket([]byte("viewIndex"))
+		// err = viewIndex.ForEach(func(k, v []byte) error {
+		// 	err := viewIndex.Delete(k)
+		// 	if err != nil {
+		// 		return err
+		// 	}
+		// 	return nil
+		// })
+		// if err != nil {
+		// 	return err
+		// }
 
 		fileIndex := tx.Bucket([]byte("fileIndex"))
 		err = fileIndex.ForEach(func(k, v []byte) error {
@@ -408,7 +525,7 @@ func rebuildIndex() {
 		}
 
 		assets := tx.Bucket([]byte("assets"))
-		assetsCount, err := getLengthOfBucket(db, "assets")
+		//assetsCount, err := getLengthOfBucket(db, "assets")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -419,7 +536,7 @@ func rebuildIndex() {
 		if err := assets.ForEach(func(k, v []byte) error {
 			filepath := strings.Split(string(k), "<#>")[1]
 			fileIndex.Put([]byte(filepath), k)
-			viewIndex.Put(itob(uint64(assetsCount)-indexCount), k)
+			//viewIndex.Put(itob(uint64(assetsCount)-indexCount), k)
 			indexCount++
 			return nil
 		}); err != nil {
@@ -432,6 +549,35 @@ func rebuildIndex() {
 	}
 }
 
+func GetAllAssetKeys() []string {
+	db, err := bolt.Open("chronoshot.db", 0777, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	assetsCount, err := getLengthOfBucket(db, "selections")
+	allAssetKeys := make([]string, assetsCount)
+
+	db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("assets"))
+		i := 1
+		b.ForEach(func(k, v []byte) error {
+			info, err := deserialiseAssetInfo(v)
+			if err != nil {
+				log.Fatal(err)
+			}
+			//fmt.Printf("key=%s, value=%s\n", k, v)
+			allAssetKeys[assetsCount-i] = string(info.KeyHash)
+			i++
+			return nil
+		})
+		return nil
+	})
+
+	return allAssetKeys
+}
+
 func GetLengthOfIndex() int {
 	db, err := bolt.Open("chronoshot.db", 0777, nil)
 	if err != nil {
@@ -439,7 +585,8 @@ func GetLengthOfIndex() int {
 	}
 	defer db.Close()
 
-	lengthOfBucket, err := getLengthOfBucket(db, "viewIndex")
+	lengthOfBucket, err := getLengthOfBucket(db, "assetsLookup")
+
 	if err != nil {
 		fmt.Println("Error in GetLengthOfIndex getting length of index bucket", err)
 		log.Fatal(err)
