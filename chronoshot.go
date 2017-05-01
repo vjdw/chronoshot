@@ -56,26 +56,16 @@ func getAssetCountHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// xyzzy move to file
 type asset struct {
 	AssetKey string
-	//IsSelected bool
 }
 
 func getAllAssetMetadataHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	//var allAssetsCount = db.GetLengthOfIndex()
-	//allAssets := make([]asset, 10, 10) // allAssetsCount)
-
 	allAssets := db.GetAllAssetKeys()
 
-	// response := strconv.Itoa(db.GetLengthOfIndex())
-	// w.Header().Set("Content-Length", strconv.Itoa(len(response)))
-	// if _, err := w.Write([]byte(response)); err != nil {
-	// 	log.Println("unable to write response.")
-	// }
-
-	//buf, err := json.Marshal(map[string]time.Time{"datetime": dateTime})
 	buf, err := json.Marshal(allAssets)
 	if err != nil {
 		log.Fatal(err)
@@ -88,38 +78,6 @@ func getAllAssetMetadataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// func getAssetHandler(w http.ResponseWriter, r *http.Request) {
-// 	id := r.URL.Query().Get("id")
-// 	index, err := strconv.ParseUint(id, 10, 64)
-// 	if err != nil || index < 0 {
-// 		log.Println(id, "is not a valid id.")
-// 		http.NotFound(w, r)
-// 		return
-// 	}
-// 	imgPath := db.GetAssetPathByIndex(index)
-// 	log.Println("Requested asset:", string(imgPath))
-
-// 	f, err := os.Open(string(imgPath[:]))
-// 	if err != nil {
-// 		log.Println("Could not open file", string(imgPath[:]))
-// 		http.NotFound(w, r)
-// 		return
-// 	}
-
-// 	var buf bytes.Buffer
-// 	_, err = buf.ReadFrom(f)
-// 	if err != nil {
-// 		log.Println("Could not read file", string(imgPath[:]))
-// 		http.NotFound(w, r)
-// 		return
-// 	}
-
-// 	w.Header().Set("Content-Type", "image/jpeg")
-// 	w.Header().Set("Content-Length", strconv.Itoa(len(buf.Bytes())))
-// 	if _, err := w.Write(buf.Bytes()); err != nil {
-// 		log.Println("unable to write image.")
-// 	}
-// }
 func getAssetHandler(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("id")
 
@@ -154,21 +112,6 @@ func getAssetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// func getThumbnailHandler(w http.ResponseWriter, r *http.Request) {
-// 	id := r.URL.Query().Get("id")
-// 	index, err := strconv.ParseUint(id, 10, 64)
-// 	if err != nil {
-// 		http.NotFound(w, r)
-// 		return
-// 	}
-// 	buf := db.GetThumbnailByIndex(index)
-
-// 	w.Header().Set("Content-Type", "image/jpeg")
-// 	w.Header().Set("Content-Length", strconv.Itoa(len(buf)))
-// 	if _, err := w.Write(buf); err != nil {
-// 		log.Println("unable to write image.")
-// 	}
-// }
 func getThumbnailHandler(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("id")
 
@@ -187,26 +130,6 @@ func getThumbnailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// func getExifDateTimeHandler(w http.ResponseWriter, r *http.Request) {
-// 	id := r.URL.Query().Get("id")
-// 	index, err := strconv.ParseUint(id, 10, 64)
-// 	if err != nil {
-// 		http.NotFound(w, r)
-// 		return
-// 	}
-
-// 	dateTime := db.GetDateTimeByIndex(index)
-// 	buf, err := json.Marshal(map[string]time.Time{"datetime": dateTime})
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-
-// 	w.Header().Set("Content-Type", "text/plain")
-// 	w.Header().Set("Content-Length", strconv.Itoa(len(buf)))
-// 	if _, err := w.Write(buf); err != nil {
-// 		log.Println("unable to write response.")
-// 	}
-// }
 func getExifDateTimeHandler(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("id")
 
@@ -229,6 +152,7 @@ func getExifDateTimeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// xyzzy move to file
 type selection struct {
 	AssetKey   string
 	IsSelected bool
@@ -256,8 +180,6 @@ func selectHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if r.Method == "POST" {
-		//body, err := ioutil.ReadAll(r.Body)
-		//log.Println(string(body))
 		decoder := json.NewDecoder(r.Body)
 		var s selection
 		err := decoder.Decode(&s)
@@ -269,9 +191,10 @@ func selectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func updateDatabaseHandler(w http.ResponseWriter, r *http.Request) {
-	db.RebuildIndex()
-}
+// xyzzy remove?
+// func updateDatabaseHandler(w http.ResponseWriter, r *http.Request) {
+// 	db.RebuildIndex()
+// }
 
 func watchDirectory(path string) {
 	// Make the channel buffered to ensure no event is dropped. Notify will drop
@@ -323,9 +246,10 @@ func processPhoto(path string, info os.FileInfo, err error) error {
 			}
 
 			datetime, orientation := getExifDateTime(buf)
-			assetDbKey := []byte(strings.Join([]string{datetime.String(), path}, "<#>"))
+			// xyzzy don't inject <#> characters in chronoshot.go, pass everything into db.go and do it there.
+			// xyzzy was: assetDbKey := []byte(strings.Join([]string{datetime.String(), path}, "<#>"))
 
-			err = storeThumbnail(assetDbKey, path, buf, orientation, datetime)
+			err = storeThumbnail(path, buf, orientation, datetime)
 			if err != nil {
 				//fmt.Println("Could not process photo:", path, "because:", err)
 				chanLog <- strings.Join([]string{"Could not process photo:", path, "because:", err.Error()}, "")
@@ -374,7 +298,8 @@ func getExifDateTime(b []byte) (time.Time, *tiff.Tag) {
 	return tm, orientation
 }
 
-func storeThumbnail(assetDbKey []byte, path string, b []byte, orientation *tiff.Tag, dateTime time.Time) error {
+// xyzzy was: func storeThumbnail(assetDbKey []byte, path string, b []byte, orientation *tiff.Tag, dateTime time.Time) error {
+func storeThumbnail(path string, b []byte, orientation *tiff.Tag, dateTime time.Time) error {
 	fmt.Println("storeThumbnail for", path)
 
 	r := bytes.NewReader(b)
@@ -401,12 +326,10 @@ func storeThumbnail(assetDbKey []byte, path string, b []byte, orientation *tiff.
 	}
 
 	thumbnail := imaging.Thumbnail(img, 200, 200, imaging.Linear)
-	//thumbnail := resize.Thumbnail(200, 200, img, resize.Bilinear)
-	//thumbnail := resize.Resize(200, 0, img, resize.Lanczos3)
 
 	buf := new(bytes.Buffer)
 	jpeg.Encode(buf, thumbnail, &jpeg.Options{Quality: 75})
-	db.PutAsset(assetDbKey, []byte(path), buf.Bytes(), dateTime)
+	db.PutAsset([]byte(path), buf.Bytes(), dateTime)
 
 	////////////////////
 	// // Faster resize method, but seems to not like being multithreaded?
@@ -442,20 +365,22 @@ func main() {
 	chanLog <- strings.Join([]string{"Photo directory set to ", dir}, "")
 	//fmt.Println("Photo directory set to", dir)
 
-	ticker := time.NewTicker(30 * time.Second)
-	quit := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				db.RebuildIndex()
-			case <-quit:
-				ticker.Stop()
-				return
-			}
-		}
-	}()
+	// xyzzy remove?
+	// ticker := time.NewTicker(30 * time.Second)
+	// quit := make(chan struct{})
+	// go func() {
+	// 	for {
+	// 		select {
+	// 		case <-ticker.C:
+	// 			db.RebuildIndex()
+	// 		case <-quit:
+	// 			ticker.Stop()
+	// 			return
+	// 		}
+	// 	}
+	// }()
 
+	// xyzzy move this block, and all handlers, to separate file
 	http.HandleFunc("/", rootHandler)
 	http.HandleFunc("/getThumbnail/", getThumbnailHandler)
 	http.HandleFunc("/getExifDateTime/", getExifDateTimeHandler)
@@ -463,7 +388,7 @@ func main() {
 	http.HandleFunc("/getAssetCount/", getAssetCountHandler)
 	http.HandleFunc("/getAllAssetMetadata/", getAllAssetMetadataHandler)
 	http.HandleFunc("/select/", selectHandler)
-	http.HandleFunc("/updateDatabase/", updateDatabaseHandler)
+	// xyzzy remove? http.HandleFunc("/updateDatabase/", updateDatabaseHandler)
 	go http.ListenAndServe(":8080", nil)
 	fmt.Println("Webserver ready.")
 

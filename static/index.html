@@ -54,13 +54,14 @@
         border-bottom-right-radius: 20px;
       }
 
+
+      /* xyzzy remove?
       #myImg {
           border-radius: 5px;
           cursor: pointer;
           transition: 0.3s;
       }
-
-      #myImg:hover {opacity: 0.7;}
+      #myImg:hover {opacity: 0.7;}*/
 
       /* The Modal (background) */
       .modal {
@@ -180,35 +181,25 @@
           }
       }
 
-      /****************************************/
       .contentContainer {
-          /*border: 1px solid #DDDDDD;
-          width: 200px;
-          height: 200px;*/
           position:relative;
-
           margin: auto;
           display: block;
           width: auto;
-          /*height: 80%;*/
-          /*max-width: 700px;*/
       }
       .contentPrevious {
           float: left;
           position: absolute;
           left: 0px;
           top: 0px;
-          /*background-color: green;*/
           height: 100%;
           min-width: 50%;
       }
-
       .contentNext {
           float: right;
           position: absolute;
           right: 0px;
           top: 0px;
-          /*background-color: green;*/
           height: 100%;
           min-width: 50%;
       }
@@ -219,14 +210,13 @@
   <body>
     <div id="divModal" class="modal">
       <span class="close">&times;</span>
-      <!--★-->
       <span id="spanSelect" class="select">☆</span>
       <div class="contentContainer">
-        <div class="contentPrevious" onclick="moveModalPrevious()"></div>
+        <div class="contentPrevious" onclick="moveModal(false)"></div>
         <img class="modal-content" id="imgModal1">
         <img class="modal-content" id="imgModal2">
         <img class="modal-content" id="imgModal3">
-        <div class="contentNext" onclick="moveModalNext()"></div>
+        <div class="contentNext" onclick="moveModal(true)"></div>
       </div>
       <div id="divDownload" class="download">download</div>
     </div>
@@ -247,18 +237,20 @@
       var totalColumnCount = Math.floor((window.innerWidth - (2 * divGridItemPadding)) / thumbnailOuterSize);
       var leftPaddingToCentraliseGrid = (window.innerWidth - (totalColumnCount * thumbnailOuterSize) - (2 * divGridItemPadding)) / 2;
       var totalRowCount = 0;
-      var modalAssetId = -1;
-      var modalAssetIsSelected = false;
       var thumbnailMetadata = [];
 
       // The thumbnail most recently loaded from server,
       // only for an estimate of currently visible datetime.
       var visibleImgKey = ""
 
-      var modal = document.getElementById('divModal');
-      var modalImgPrevious = document.getElementById("imgModal1");
-      var modalImgCurrent = document.getElementById("imgModal2");
-      var modalImgNext = document.getElementById("imgModal3");
+      var modal = {
+        modalAssetIndex: -1,
+        assetIsSelected: false, // a.k.a. "starred"
+        divModal: document.getElementById('divModal'),
+        modalImgPrevious: document.getElementById("imgModal1"),
+        modalImgCurrent: document.getElementById("imgModal2"),
+        modalImgNext: document.getElementById("imgModal3"),
+      };
 
       function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
@@ -277,58 +269,38 @@
         });
       }
 
-      function moveModalNext() {
-        var oldCurrent = modalImgCurrent;
-        modalImgCurrent = modalImgNext;
-        modalImgNext = oldCurrent;
+      function moveModal(moveForwards) {
+        // There are 3 img elements, Previous, Current and Next.
+        // Current is always the image on display.
+        // Previous and Next are used to preload the photos in each direction.
 
-        modalImgNext.style.display = "none";
-        modalImgCurrent.style.display = "block";
+        var oldCurrent = modal.modalImgCurrent;
+        modal.modalImgCurrent = moveForwards ? modal.modalImgNext : modal.modalImgPrevious;
+        if (moveForwards) {
+          modal.modalImgNext = oldCurrent;
+          modal.modalImgNext.style.display = "none";
+        }
+        else {
+          modal.modalImgPrevious = oldCurrent;
+          modal.modalImgPrevious.style.display = "none";
+        }
+        modal.modalImgCurrent.style.display = "block";
 
-        modalAssetId++;
+        modal.modalAssetIndex = modal.modalAssetIndex + (moveForwards ? 1 : -1);
 
-        var nextModalAssetId = modalAssetId + 1;
-        var row = Math.floor(nextModalAssetId / totalColumnCount);
-        var column = nextModalAssetId % totalColumnCount;
-        var imageIndex = ((row * totalColumnCount) + column);
+        var nextModalAssetIndex = modal.modalAssetIndex + 1;
+        var row = Math.floor(nextModalAssetIndex / totalColumnCount);
+        var column = nextModalAssetIndex % totalColumnCount;
         var imageKey = thumbnailMetadata[row][column];
-        modalImgNext.src = "/getAsset/?id=" + imageKey.assetId;
+        modal.modalImgNext.src = "/getAsset/?id=" + imageKey.assetId;
 
-        var previousModalAssetId = modalAssetId - 1;
-        row = Math.floor(previousModalAssetId / totalColumnCount);
-        column = previousModalAssetId % totalColumnCount;
-        imageIndex = ((row * totalColumnCount) + column);
+        var previousModalAssetIndex = modal.modalAssetIndex - 1;
+        row = Math.floor(previousModalAssetIndex / totalColumnCount);
+        column = previousModalAssetIndex % totalColumnCount;
         imageKey = thumbnailMetadata[row][column];
-        modalImgPrevious.src = "/getAsset/?id=" + imageKey.assetId;
+        modal.modalImgPrevious.src = "/getAsset/?id=" + imageKey.assetId;
 
-        updateModalDetails(modalAssetId);
-      }
-
-      function moveModalPrevious() {
-        var oldCurrent = modalImgCurrent;
-        modalImgCurrent = modalImgPrevious;
-        modalImgPrevious = oldCurrent;
-
-        modalImgPrevious.style.display = "none";
-        modalImgCurrent.style.display = "block";
-
-        modalAssetId--;
-
-        var nextModalAssetId = modalAssetId + 1;
-        var row = Math.floor(nextModalAssetId / totalColumnCount);
-        var column = nextModalAssetId % totalColumnCount;
-        var imageIndex = ((row * totalColumnCount) + column);
-        var imageKey = thumbnailMetadata[row][column];
-        modalImgNext.src = "/getAsset/?id=" + imageKey.assetId;
-
-        var previousModalAssetId = modalAssetId - 1;
-        row = Math.floor(previousModalAssetId / totalColumnCount);
-        column = previousModalAssetId % totalColumnCount;
-        imageIndex = ((row * totalColumnCount) + column);
-        imageKey = thumbnailMetadata[row][column];
-        modalImgPrevious.src = "/getAsset/?id=" + imageKey.assetId;
-
-        updateModalDetails(modalAssetId);
+        updateModalDetails(modal.modalAssetIndex);
       }
 
       var previousOnScroll = Date.now();
@@ -415,9 +387,9 @@
         (function (imageKey) {
                 fetch('/select/?id='+imageKey.assetId).then(function (response) {
                   response.json().then(function(result) {
-                    modalAssetIsSelected = result.isSelected;
+                    modal.assetIsSelected = result.isSelected;
                     var spanSelected = document.getElementById('spanSelect')
-                    spanSelected.innerText = modalAssetIsSelected ? "★" : "☆";
+                    spanSelected.innerText = modal.assetIsSelected ? "★" : "☆";
                   });
                 });
               })(imageKey);
@@ -456,24 +428,24 @@
               imgThumbnail.onclick = function(r,c) {
                 return function() {
                   var imageIndex = ((r * totalColumnCount) + c);
-                  modalAssetId = imageIndex;
+                  modal.modalAssetIndex = imageIndex;
                   var imageKey = thumbnailMetadata[r][c];
                   //console.log('row = ' + r + ' col = ' + c);
-                  modal.style.display = "block";
-                  //modalAssetId = thumbnailMetadata[r][c].assetId;
-                  modalImgCurrent.src = "/getAsset/?id=" + imageKey.assetId;
+                  modal.divModal.style.display = "block";
+                  //modal.modalAssetIndex = thumbnailMetadata[r][c].assetId;
+                  modal.modalImgCurrent.src = "/getAsset/?id=" + imageKey.assetId;
                   // Try to cache the next images
                   if (imageIndex < (totalAssetCount-1)) {
                     var rowNext = Math.floor((imageIndex+1) / totalColumnCount);
                     var columnNext = (imageIndex+1) % totalColumnCount;
                     var imageKey = thumbnailMetadata[rowNext][columnNext];
-                    modalImgNext.src = "/getAsset/?id=" + imageKey.assetId;
+                    modal.modalImgNext.src = "/getAsset/?id=" + imageKey.assetId;
                   }
                   if (imageIndex > 0) {
                     var rowPrevious = Math.floor((imageIndex-1) / totalColumnCount);
                     var columnPrevious = (imageIndex-1) % totalColumnCount;
                     var imageKey = thumbnailMetadata[rowPrevious][columnPrevious];
-                    modalImgPrevious.src = "/getAsset/?id=" + imageKey.assetId;
+                    modal.modalImgPrevious.src = "/getAsset/?id=" + imageKey.assetId;
                   }
 
                   updateModalDetails(imageIndex); // imageKey.assetId);
@@ -508,29 +480,29 @@
 
       function initialiseModalButtons() {
         // Get the <span> element that closes the modal
-        modalImgPrevious.style.display = "none";
-        modalImgNext.style.display = "none";
+        modal.modalImgPrevious.style.display = "none";
+        modal.modalImgNext.style.display = "none";
         var span = document.getElementsByClassName("close")[0];
         span.onclick = function() {
-          modal.style.display = "none";
+          modal.divModal.style.display = "none";
         }
 
         // Get the <span> element that selects a photo
         var span = document.getElementsByClassName("select")[0];
         span.onclick = function() {
           //var form = new FormData(document.getElementById('login-form'));
-          modalAssetIsSelected = !modalAssetIsSelected;
+          modal.assetIsSelected = !modal.assetIsSelected;
 
-          var row = Math.floor(modalAssetId / totalColumnCount);
-          var column = modalAssetId % totalColumnCount;
+          var row = Math.floor(modal.modalAssetIndex / totalColumnCount);
+          var column = modal.modalAssetIndex % totalColumnCount;
           var imageKey = thumbnailMetadata[row][column];
 
           fetch("/select/", {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({assetKey: imageKey.assetId, isSelected: modalAssetIsSelected})
+            body: JSON.stringify({assetKey: imageKey.assetId, isSelected: modal.assetIsSelected})
           });
-          updateModalDetails(modalAssetId);
+          updateModalDetails(modal.modalAssetIndex);
         }
       }
 
