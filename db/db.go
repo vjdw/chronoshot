@@ -33,10 +33,7 @@ type selection struct {
 }
 
 var chanPutAsset = make(chan assetKvp)
-
-// xyzzy remove? var chanRebuildIndex = make(chan bool)
 var chanPutSelection = make(chan selection)
-var isDirtyIndex = true
 
 func Init() {
 	db, err := bolt.Open("chronoshot.db", 0777, nil)
@@ -58,7 +55,13 @@ func Init() {
 		if err != nil {
 			return err
 		}
+
+		// xyzzy - when handling multiple selection lists, "selections" and "all" should be replaced
 		_, err = tx.CreateBucketIfNotExists([]byte("selections"))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte("all"))
 		if err != nil {
 			return err
 		}
@@ -69,8 +72,6 @@ func Init() {
 	}
 	db.Close()
 
-	// xyzzy remove? rebuildIndex()
-
 	go writeChannelsMonitor()
 }
 
@@ -79,9 +80,6 @@ func writeChannelsMonitor() {
 		select {
 		case assetKvp := <-chanPutAsset:
 			putAsset(assetKvp)
-		// xyzzy remove?
-		//case <-chanRebuildIndex:
-		//	rebuildIndex()
 		case selection := <-chanPutSelection:
 			putSelection(selection)
 		}
@@ -109,8 +107,6 @@ func putAsset(kvp assetKvp) {
 	defer db.Close()
 
 	err = db.Update(func(tx *bolt.Tx) error {
-		isDirtyIndex = true
-
 		hasher := md5.New()
 		hasher.Write(kvp.Key)
 		keyHash := hasher.Sum(nil)
@@ -144,6 +140,15 @@ func putAsset(kvp assetKvp) {
 		}
 		filepath := strings.Split(string(kvp.Key), "<#>")[1]
 		err = b.Put([]byte(filepath), kvp.Key)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		b = tx.Bucket([]byte("all"))
+		if err != nil {
+			return err
+		}
+		err = b.Put([]byte(keyHashStr), kvp.Key)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -361,104 +366,44 @@ func GetAssetPath(key []byte) []byte {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("xyzzy1", string(assetValue))
+
 	// assetValue is lost on return because of db.Close()
 	assetValueCopy := make([]byte, len(assetValue), (cap(assetValue)+1)*2)
 	copy(assetValueCopy, assetValue)
-	fmt.Println("xyzzy2", string(assetValueCopy))
 	return assetValueCopy
 }
 
-// xyzzy remove indexing?
-// func RebuildIndex() {
-// 	// Queue up a call to rebuildIndex.
-// 	chanRebuildIndex <- true
-// }
-
-// func rebuildIndex() {
-// 	db, err := bolt.Open("chronoshot.db", 0777, nil)
-// 	if err != nil {
-
-// 		log.Fatal(err)
-// 		fmt.Println("Ignoring request to rebuild index because it isn't dirty.")
-// 	}
-// 	defer func() {
-// 		db.Close()
-// 		fmt.Printf("%v items in index.\n", GetLengthOfIndex())
-// 	}()
-
-// 	err = db.Update(func(tx *bolt.Tx) error {
-// 		if !isDirtyIndex {
-// 			fmt.Println("Ignoring request to rebuild index because it isn't dirty.")
-// 			return nil
-// 		}
-// 		fmt.Print("Rebuilding index... ")
-// 		isDirtyIndex = false
-
-// 		fileIndex := tx.Bucket([]byte("fileIndex"))
-// 		err = fileIndex.ForEach(func(k, v []byte) error {
-// 			err := fileIndex.Delete(k)
-// 			if err != nil {
-// 				return err
-// 			}
-// 			return nil
-// 		})
-// 		if err != nil {
-// 			return err
-// 		}
-
-// 		assets := tx.Bucket([]byte("assets"))
-// 		//assetsCount, err := getLengthOfBucket(db, "assets")
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-
-// 		// Iterate over items in sorted key order.
-// 		// Put in viewIndex in reverse datetime order.
-// 		indexCount := uint64(1)
-// 		if err := assets.ForEach(func(k, v []byte) error {
-// 			filepath := strings.Split(string(k), "<#>")[1]
-// 			fileIndex.Put([]byte(filepath), k)
-// 			//viewIndex.Put(itob(uint64(assetsCount)-indexCount), k)
-// 			indexCount++
-// 			return nil
-// 		}); err != nil {
-// 			return err
-// 		}
-// 		return nil
-// 	})
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-// }
-
-func GetAllAssetKeys() []string {
+func GetAllAssetKeys(setName []byte) []string {
 	db, err := bolt.Open("chronoshot.db", 0777, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	assetsCount, err := getLengthOfBucket(db, "assets")
-	allAssetKeys := make([]string, assetsCount)
+	setCount, err := getLengthOfBucket(db, string(setName))
+	setKeys := make([]string, setCount)
 
 	db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("assets"))
+		bAssets := tx.Bucket([]byte("assets"))
+		bSet := tx.Bucket(setName)
 		i := 1
-		b.ForEach(func(k, v []byte) error {
+
+		// Need to enumerate assets bucket to force date order on the returned set.
+		bAssets.ForEach(func(k, v []byte) error {
 			info, err := deserialiseAssetInfo(v)
 			if err != nil {
 				log.Fatal(err)
 			}
-			//fmt.Printf("key=%s, value=%s\n", k, v)
-			allAssetKeys[assetsCount-i] = string(info.KeyHash)
-			i++
+			if bSet.Get(info.KeyHash) != nil {
+				setKeys[setCount-i] = string(info.KeyHash)
+				i++
+			}
 			return nil
 		})
 		return nil
 	})
 
-	return allAssetKeys
+	return setKeys
 }
 
 func GetLengthOfIndex() int {

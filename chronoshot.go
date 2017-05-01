@@ -61,12 +61,14 @@ type asset struct {
 	AssetKey string
 }
 
-func getAllAssetMetadataHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+func getAssetKeysHandler(w http.ResponseWriter, r *http.Request) {
+	setName := r.URL.Query().Get("set")
+	if setName == "" {
+		setName = "all"
+	}
+	assetsInSet := db.GetAllAssetKeys([]byte(setName))
 
-	allAssets := db.GetAllAssetKeys()
-
-	buf, err := json.Marshal(allAssets)
+	buf, err := json.Marshal(assetsInSet)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -191,11 +193,6 @@ func selectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// xyzzy remove?
-// func updateDatabaseHandler(w http.ResponseWriter, r *http.Request) {
-// 	db.RebuildIndex()
-// }
-
 func watchDirectory(path string) {
 	// Make the channel buffered to ensure no event is dropped. Notify will drop
 	// an event if the receiver is not able to keep up the sending pace.
@@ -246,9 +243,6 @@ func processPhoto(path string, info os.FileInfo, err error) error {
 			}
 
 			datetime, orientation := getExifDateTime(buf)
-			// xyzzy don't inject <#> characters in chronoshot.go, pass everything into db.go and do it there.
-			// xyzzy was: assetDbKey := []byte(strings.Join([]string{datetime.String(), path}, "<#>"))
-
 			err = storeThumbnail(path, buf, orientation, datetime)
 			if err != nil {
 				//fmt.Println("Could not process photo:", path, "because:", err)
@@ -298,7 +292,6 @@ func getExifDateTime(b []byte) (time.Time, *tiff.Tag) {
 	return tm, orientation
 }
 
-// xyzzy was: func storeThumbnail(assetDbKey []byte, path string, b []byte, orientation *tiff.Tag, dateTime time.Time) error {
 func storeThumbnail(path string, b []byte, orientation *tiff.Tag, dateTime time.Time) error {
 	fmt.Println("storeThumbnail for", path)
 
@@ -365,30 +358,14 @@ func main() {
 	chanLog <- strings.Join([]string{"Photo directory set to ", dir}, "")
 	//fmt.Println("Photo directory set to", dir)
 
-	// xyzzy remove?
-	// ticker := time.NewTicker(30 * time.Second)
-	// quit := make(chan struct{})
-	// go func() {
-	// 	for {
-	// 		select {
-	// 		case <-ticker.C:
-	// 			db.RebuildIndex()
-	// 		case <-quit:
-	// 			ticker.Stop()
-	// 			return
-	// 		}
-	// 	}
-	// }()
-
-	// xyzzy move this block, and all handlers, to separate file
+	// xyzzy move this block, and all handlers, to separate file?
 	http.HandleFunc("/", rootHandler)
 	http.HandleFunc("/getThumbnail/", getThumbnailHandler)
 	http.HandleFunc("/getExifDateTime/", getExifDateTimeHandler)
 	http.HandleFunc("/getAsset/", getAssetHandler)
 	http.HandleFunc("/getAssetCount/", getAssetCountHandler)
-	http.HandleFunc("/getAllAssetMetadata/", getAllAssetMetadataHandler)
+	http.HandleFunc("/getAssetKeys/", getAssetKeysHandler)
 	http.HandleFunc("/select/", selectHandler)
-	// xyzzy remove? http.HandleFunc("/updateDatabase/", updateDatabaseHandler)
 	go http.ListenAndServe(":8080", nil)
 	fmt.Println("Webserver ready.")
 

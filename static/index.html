@@ -54,15 +54,6 @@
         border-bottom-right-radius: 20px;
       }
 
-
-      /* xyzzy remove?
-      #myImg {
-          border-radius: 5px;
-          cursor: pointer;
-          transition: 0.3s;
-      }
-      #myImg:hover {opacity: 0.7;}*/
-
       /* The Modal (background) */
       .modal {
           display: none; /* Hidden by default */
@@ -237,35 +228,33 @@
       var totalColumnCount = Math.floor((window.innerWidth - (2 * divGridItemPadding)) / thumbnailOuterSize);
       var leftPaddingToCentraliseGrid = (window.innerWidth - (totalColumnCount * thumbnailOuterSize) - (2 * divGridItemPadding)) / 2;
       var totalRowCount = 0;
-      var thumbnailMetadata = [];
+      var assetKeys = [];
+      var setName = 'all';
 
       // The thumbnail most recently loaded from server,
       // only for an estimate of currently visible datetime.
       var visibleImgKey = ""
 
       var modal = {
-        modalAssetIndex: -1,
+        assetIndex: -1,
         assetIsSelected: false, // a.k.a. "starred"
         divModal: document.getElementById('divModal'),
-        modalImgPrevious: document.getElementById("imgModal1"),
-        modalImgCurrent: document.getElementById("imgModal2"),
-        modalImgNext: document.getElementById("imgModal3"),
+        imgPrevious: document.getElementById("imgModal1"),
+        imgCurrent: document.getElementById("imgModal2"),
+        imgNext: document.getElementById("imgModal3"),
       };
 
-      function sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-      }
+      function initialise(setName) {
+        fetch('/getAssetKeys/?set='+setName).then(function (response) {
+          response.json().then(function(allAssets) {
+            assetKeys = allAssets;
+            totalAssetCount = assetKeys.length;
+            totalRowCount = totalAssetCount / totalColumnCount; 
 
-      function initialise() {
-        fetch('/getAssetCount').then(function (response) {
-          return response.json();
-        }).then(function(data) {
-          totalAssetCount = data;
-          totalRowCount = totalAssetCount / totalColumnCount;
-          updateThumbnailMetadata();
-          //configureVirtualList();
-          //initialiseModalButtons();
-          //updateDateTime();
+            configureVirtualList();
+            initialiseModalButtons();
+            updateDateTimeBanner();
+          });
         });
       }
 
@@ -274,45 +263,36 @@
         // Current is always the image on display.
         // Previous and Next are used to preload the photos in each direction.
 
-        var oldCurrent = modal.modalImgCurrent;
-        modal.modalImgCurrent = moveForwards ? modal.modalImgNext : modal.modalImgPrevious;
+        var oldCurrent = modal.imgCurrent;
+        modal.imgCurrent = moveForwards ? modal.imgNext : modal.imgPrevious;
         if (moveForwards) {
-          modal.modalImgNext = oldCurrent;
-          modal.modalImgNext.style.display = "none";
+          modal.imgNext = oldCurrent;
+          modal.imgNext.style.display = "none";
         }
         else {
-          modal.modalImgPrevious = oldCurrent;
-          modal.modalImgPrevious.style.display = "none";
+          modal.imgPrevious = oldCurrent;
+          modal.imgPrevious.style.display = "none";
         }
-        modal.modalImgCurrent.style.display = "block";
+        modal.imgCurrent.style.display = "block";
 
-        modal.modalAssetIndex = modal.modalAssetIndex + (moveForwards ? 1 : -1);
+        modal.assetIndex = modal.assetIndex + (moveForwards ? 1 : -1);
 
-        var nextModalAssetIndex = modal.modalAssetIndex + 1;
-        var row = Math.floor(nextModalAssetIndex / totalColumnCount);
-        var column = nextModalAssetIndex % totalColumnCount;
-        var imageKey = thumbnailMetadata[row][column];
-        modal.modalImgNext.src = "/getAsset/?id=" + imageKey.assetId;
+        modal.imgNext.src = "/getAsset/?id=" + assetKeys[modal.assetIndex+1];
+        modal.imgPrevious.src = "/getAsset/?id=" + assetKeys[modal.assetIndex-1];
 
-        var previousModalAssetIndex = modal.modalAssetIndex - 1;
-        row = Math.floor(previousModalAssetIndex / totalColumnCount);
-        column = previousModalAssetIndex % totalColumnCount;
-        imageKey = thumbnailMetadata[row][column];
-        modal.modalImgPrevious.src = "/getAsset/?id=" + imageKey.assetId;
-
-        updateModalDetails(modal.modalAssetIndex);
+        updateModalDetails(modal.assetIndex);
       }
 
       var previousOnScroll = Date.now();
       function onScroll(e) {
         var now = Date.now();
         if (now - previousOnScroll > 250) {
-          updateDateTime();
+          updateDateTimeBanner();
           previousOnScroll = now;
         }
       }
 
-      function updateDateTime() {
+      function updateDateTimeBanner() {
         fetch('/getExifDateTime/?id='+visibleImgKey).then(function (response) {
           response.json().then(function(result) {
             var spanDateTime = document.getElementById('spanDateTime');
@@ -321,78 +301,32 @@
         });
       }
 
-      function updateThumbnailMetadata() {
+      function updateModalDetails(assetIndex) {
+        var assetKey = assetKeys[assetIndex];
 
-        fetch('/getAllAssetMetadata').then(function (response) {
-          response.json().then(function(allAssets) {
-            //console.log(result[3]);
-
-            for (var i=0; i < totalRowCount; i++) {
-              var rowThumbnailMetadata;
-              for (rowThumbnailMetadata=[]; rowThumbnailMetadata.push({})<totalColumnCount;)
-                ;
-              thumbnailMetadata.push(rowThumbnailMetadata);
-            }
-
-            for (var row = 0; row < totalRowCount; row++) {
-              for (var column = 0; column < totalColumnCount; column++) {
-                //console.log('row = ' + row + ' col = ' + column);
-                var assetIndex = (row * totalColumnCount) + column;
-                thumbnailMetadata[row][column].assetId = allAssets[assetIndex];
-              }
-            }
-
-            configureVirtualList();
-            initialiseModalButtons();
-            updateDateTime();
-          });
-        });
-
-        // for (var i=0; i < totalRowCount; i++) {
-        //   var rowThumbnailMetadata;
-        //   for (rowThumbnailMetadata=[]; rowThumbnailMetadata.push({})<totalColumnCount;)
-        //     ;
-        //   thumbnailMetadata.push(rowThumbnailMetadata);
-        // }
-
-        // for (var row = 0; row < totalRowCount; row++) {
-        //   for (var column = 0; column < totalColumnCount; column++) {
-        //     //console.log('row = ' + row + ' col = ' + column);
-        //     var assetId = (row * totalColumnCount) + column;
-        //     thumbnailMetadata[row][column].assetId = assetId;
-        //   }
-        // }
-      }
-
-      function updateModalDetails(imgId) {
-
-        var row = Math.floor(imgId / totalColumnCount);
-        var column = imgId % totalColumnCount;
-        var imageKey = thumbnailMetadata[row][column];
-
-        (function (imageKey) {
-                fetch('/getExifDateTime/?id='+imageKey.assetId).then(function (response) {
+        (function (assetKey) {
+                fetch('/getExifDateTime/?id='+assetKey).then(function (response) {
                   response.json().then(function(result) {
                     var divDownload = document.getElementById('divDownload');
                     var aDownload = document.createElement("a");
-                    aDownload.href = "/getAsset/?id=" + imageKey.assetId;
+                    aDownload.href = "/getAsset/?id=" + assetKey;
                     aDownload.download = result.datetime;
                     aDownload.innerText = result.datetime;
                     divDownload.innerHTML = "";
                     divDownload.appendChild(aDownload);
                   });
                 });
-              })(imageKey);
+              })(assetKey);
 
-        (function (imageKey) {
-                fetch('/select/?id='+imageKey.assetId).then(function (response) {
+        (function (assetKey) {
+                fetch('/select/?id='+assetKey).then(function (response) {
                   response.json().then(function(result) {
                     modal.assetIsSelected = result.isSelected;
                     var spanSelected = document.getElementById('spanSelect')
                     spanSelected.innerText = modal.assetIsSelected ? "★" : "☆";
                   });
                 });
-              })(imageKey);
+              })(assetKey);
       }
 
       function configureVirtualList() {
@@ -402,7 +336,7 @@
           itemHeight: 240,
           totalRows: totalRowCount,
           generatorFn: function(row) {
-            visibleImgKey = thumbnailMetadata[row][0].assetId;
+            visibleImgKey = assetKeys[row*totalColumnCount];
             var divGridRow = document.createElement("div");
             divGridRow.className = "divGridRow"
 
@@ -416,41 +350,32 @@
               divGridItem.className = "divGridItem";
               divGridRow.appendChild(divGridItem);
 
-              var imageIndex = ((row * totalColumnCount) + column);
-              var imageKey = thumbnailMetadata[row][column];
+              var assetIndex = ((row * totalColumnCount) + column);
+              var assetKey = assetKeys[assetIndex];
 
               // The image thumbnail.
               var imgThumbnail = document.createElement("img");
-              imgThumbnail.src = "/getThumbnail/?id=" + imageKey.assetId;
+              imgThumbnail.src = "/getThumbnail/?id=" + assetKey;
               imgThumbnail.className = "imgThumbnail"
               imgThumbnail.width = thumbnailSize;
               imgThumbnail.height = thumbnailSize;
-              imgThumbnail.onclick = function(r,c) {
+              imgThumbnail.onclick = function(assetIndex) {
                 return function() {
-                  var imageIndex = ((r * totalColumnCount) + c);
-                  modal.modalAssetIndex = imageIndex;
-                  var imageKey = thumbnailMetadata[r][c];
-                  //console.log('row = ' + r + ' col = ' + c);
+                  modal.assetIndex = assetIndex;
+                  var assetKey = assetKeys[assetIndex];
                   modal.divModal.style.display = "block";
-                  //modal.modalAssetIndex = thumbnailMetadata[r][c].assetId;
-                  modal.modalImgCurrent.src = "/getAsset/?id=" + imageKey.assetId;
+                  modal.imgCurrent.src = "/getAsset/?id=" + assetKey;
                   // Try to cache the next images
-                  if (imageIndex < (totalAssetCount-1)) {
-                    var rowNext = Math.floor((imageIndex+1) / totalColumnCount);
-                    var columnNext = (imageIndex+1) % totalColumnCount;
-                    var imageKey = thumbnailMetadata[rowNext][columnNext];
-                    modal.modalImgNext.src = "/getAsset/?id=" + imageKey.assetId;
+                  if (assetIndex < (totalAssetCount-1)) {
+                    modal.imgNext.src = "/getAsset/?id=" + assetKeys[assetIndex+1];
                   }
-                  if (imageIndex > 0) {
-                    var rowPrevious = Math.floor((imageIndex-1) / totalColumnCount);
-                    var columnPrevious = (imageIndex-1) % totalColumnCount;
-                    var imageKey = thumbnailMetadata[rowPrevious][columnPrevious];
-                    modal.modalImgPrevious.src = "/getAsset/?id=" + imageKey.assetId;
+                  if (assetIndex > 0) {
+                    modal.imgPrevious.src = "/getAsset/?id=" + assetKeys[assetIndex-1];
                   }
 
-                  updateModalDetails(imageIndex); // imageKey.assetId);
+                  updateModalDetails(assetIndex);
                 };
-              }(row,column);
+              }(assetIndex);
               divGridItem.appendChild(imgThumbnail);
 
               // The exif datetime element.
@@ -458,17 +383,17 @@
               pExifDateTime.className = "pExifDateTime";
               pExifDateTime.innerText = "...";
               divGridItem.appendChild(pExifDateTime);
-              (function (pExifDateTime, imageKey, divGridRow) {
+              (function (pExifDateTime, assetKey, divGridRow) {
                 // Avoid calling getExifDateTime for every row that whizzes by.
                 //await sleep(750);
                 //if (document.body.contains(divGridRow)) {
-                  fetch('/getExifDateTime/?id='+imageKey.assetId).then(function (response) {
+                  fetch('/getExifDateTime/?id='+assetKey).then(function (response) {
                     response.json().then(function(result) {
                       pExifDateTime.innerText = result.datetime;
                     });
                   });
                 //}
-              })(pExifDateTime, imageKey, divGridRow);
+              })(pExifDateTime, assetKey, divGridRow);
             }
             return divGridRow;
           }
@@ -480,8 +405,8 @@
 
       function initialiseModalButtons() {
         // Get the <span> element that closes the modal
-        modal.modalImgPrevious.style.display = "none";
-        modal.modalImgNext.style.display = "none";
+        modal.imgPrevious.style.display = "none";
+        modal.imgNext.style.display = "none";
         var span = document.getElementsByClassName("close")[0];
         span.onclick = function() {
           modal.divModal.style.display = "none";
@@ -490,23 +415,41 @@
         // Get the <span> element that selects a photo
         var span = document.getElementsByClassName("select")[0];
         span.onclick = function() {
-          //var form = new FormData(document.getElementById('login-form'));
           modal.assetIsSelected = !modal.assetIsSelected;
-
-          var row = Math.floor(modal.modalAssetIndex / totalColumnCount);
-          var column = modal.modalAssetIndex % totalColumnCount;
-          var imageKey = thumbnailMetadata[row][column];
+          var assetKey = assetKeys[modal.assetIndex];
 
           fetch("/select/", {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({assetKey: imageKey.assetId, isSelected: modal.assetIsSelected})
+            body: JSON.stringify({assetKey: assetKey, isSelected: modal.assetIsSelected})
           });
-          updateModalDetails(modal.modalAssetIndex);
+          updateModalDetails(modal.assetIndex);
         }
       }
 
-      initialise();
+      // xyzzy move to helpers.js?
+      function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+
+      // xyzzy move to helpers.js?
+      function getParameterByName(name, url) {
+        if (!url)
+          url = window.location.href;
+        name = name.replace(/[\[\]]/g, "\\$&");
+        var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+          results = regex.exec(url);
+        if (!results)
+          return null;
+        if (!results[2])
+          return '';
+        return decodeURIComponent(results[2].replace(/\+/g, " "));
+      }
+
+      setName = getParameterByName('set');
+      if (setName === '')
+        setName = 'all';
+      initialise(setName);
 
     </script>
   <body>
