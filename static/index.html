@@ -383,16 +383,16 @@
               pExifDateTime.className = "pExifDateTime";
               pExifDateTime.innerText = "...";
               divGridItem.appendChild(pExifDateTime);
-              (function (pExifDateTime, assetKey, divGridRow) {
+              (async function (pExifDateTime, assetKey, divGridRow) {
                 // Avoid calling getExifDateTime for every row that whizzes by.
-                //await sleep(750);
-                //if (document.body.contains(divGridRow)) {
+                await sleep(750);
+                if (document.body.contains(divGridRow)) {
                   fetch('/getExifDateTime/?id='+assetKey).then(function (response) {
                     response.json().then(function(result) {
                       pExifDateTime.innerText = result.datetime;
                     });
                   });
-                //}
+                }
               })(pExifDateTime, assetKey, divGridRow);
             }
             return divGridRow;

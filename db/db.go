@@ -16,15 +16,15 @@ import (
 )
 
 type assetKvp struct {
-	Key   []byte
-	Value assetInfo
+	Key       []byte
+	Info      assetInfo
+	Thumbnail []byte
 }
 
 type assetInfo struct {
-	KeyHash   []byte
-	Path      []byte
-	Thumbnail []byte
-	DateTime  time.Time
+	KeyHash  []byte
+	Path     []byte
+	DateTime time.Time
 }
 
 type selection struct {
@@ -34,6 +34,8 @@ type selection struct {
 
 var chanPutAsset = make(chan assetKvp)
 var chanPutSelection = make(chan selection)
+
+var assetKeysCache = make(map[string][]string)
 
 func Init() {
 	db, err := bolt.Open("chronoshot.db", 0777, nil)
@@ -52,6 +54,10 @@ func Init() {
 			return err
 		}
 		_, err = tx.CreateBucketIfNotExists([]byte("assetsLookup"))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte("thumbnails"))
 		if err != nil {
 			return err
 		}
@@ -95,7 +101,7 @@ func PutAsset(path []byte, thumbnail []byte, dateTime time.Time) {
 	keyHash := hasher.Sum(nil)
 	keyHashStr := []byte(base64.URLEncoding.EncodeToString(keyHash))
 
-	chanPutAsset <- assetKvp{key, assetInfo{keyHashStr, path, thumbnail, dateTime}}
+	chanPutAsset <- assetKvp{key, assetInfo{keyHashStr, path, dateTime}, thumbnail}
 }
 
 func putAsset(kvp assetKvp) {
@@ -112,43 +118,52 @@ func putAsset(kvp assetKvp) {
 		keyHash := hasher.Sum(nil)
 		keyHashStr := base64.URLEncoding.EncodeToString(keyHash)
 
-		b := tx.Bucket([]byte("assets"))
+		bAssets := tx.Bucket([]byte("assets"))
 		if err != nil {
 			return err
 		}
-		serialisedAssetInfo, err := serialise(kvp.Value)
+		serialisedAssetInfo, err := serialise(kvp.Info)
 		if err != nil {
 			log.Fatal(err)
 		}
-		err = b.Put(kvp.Key, serialisedAssetInfo)
+		err = bAssets.Put(kvp.Key, serialisedAssetInfo)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		b = tx.Bucket([]byte("assetsLookup"))
+		bThumbnails := tx.Bucket([]byte("thumbnails"))
 		if err != nil {
 			return err
 		}
-		err = b.Put([]byte(keyHashStr), kvp.Key)
+		err = bThumbnails.Put(kvp.Key, kvp.Thumbnail)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		b = tx.Bucket([]byte("fileIndex"))
+		bLookup := tx.Bucket([]byte("assetsLookup"))
+		if err != nil {
+			return err
+		}
+		err = bLookup.Put([]byte(keyHashStr), kvp.Key)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		bFileIndex := tx.Bucket([]byte("fileIndex"))
 		if err != nil {
 			return err
 		}
 		filepath := strings.Split(string(kvp.Key), "<#>")[1]
-		err = b.Put([]byte(filepath), kvp.Key)
+		err = bFileIndex.Put([]byte(filepath), kvp.Key)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		b = tx.Bucket([]byte("all"))
+		bAll := tx.Bucket([]byte("all"))
 		if err != nil {
 			return err
 		}
-		err = b.Put([]byte(keyHashStr), kvp.Key)
+		err = bAll.Put([]byte(keyHashStr), kvp.Key)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -160,6 +175,8 @@ func putAsset(kvp assetKvp) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	assetKeysCache = make(map[string][]string)
 }
 
 func PutSelection(assetKey []byte, isSelected bool) {
@@ -231,12 +248,8 @@ func GetThumbnail(key []byte) []byte {
 		assetsLookup := tx.Bucket([]byte("assetsLookup"))
 		assetKey := assetsLookup.Get(key)
 
-		b := tx.Bucket([]byte("assets"))
-		info, err := deserialiseAssetInfo(b.Get(assetKey))
-		if err != nil {
-			log.Fatal(err)
-		}
-		buf = info.Thumbnail
+		b := tx.Bucket([]byte("thumbnails"))
+		buf = b.Get(assetKey)
 		return nil
 	})
 	if err != nil {
@@ -374,36 +387,44 @@ func GetAssetPath(key []byte) []byte {
 }
 
 func GetAllAssetKeys(setName []byte) []string {
-	db, err := bolt.Open("chronoshot.db", 0777, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
+	strSetName := string(setName)
+	cachedAssetKeys, ok := assetKeysCache[strSetName]
 
-	setCount, err := getLengthOfBucket(db, string(setName))
-	setKeys := make([]string, setCount)
+	if ok {
+		return cachedAssetKeys
+	} else {
+		db, err := bolt.Open("chronoshot.db", 0777, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer db.Close()
 
-	db.View(func(tx *bolt.Tx) error {
-		bAssets := tx.Bucket([]byte("assets"))
-		bSet := tx.Bucket(setName)
-		i := 1
+		setCount, err := getLengthOfBucket(db, string(setName))
+		setKeys := make([]string, setCount)
 
-		// Need to enumerate assets bucket to force date order on the returned set.
-		bAssets.ForEach(func(k, v []byte) error {
-			info, err := deserialiseAssetInfo(v)
-			if err != nil {
-				log.Fatal(err)
-			}
-			if bSet.Get(info.KeyHash) != nil {
-				setKeys[setCount-i] = string(info.KeyHash)
-				i++
-			}
+		db.View(func(tx *bolt.Tx) error {
+			bAssets := tx.Bucket([]byte("assets"))
+			bSet := tx.Bucket(setName)
+			i := 1
+
+			// Need to enumerate assets bucket to force date order on the returned set.
+			bAssets.ForEach(func(k, v []byte) error {
+				info, err := deserialiseAssetInfo(v)
+				if err != nil {
+					log.Fatal(err)
+				}
+				if bSet.Get(info.KeyHash) != nil {
+					setKeys[setCount-i] = string(info.KeyHash)
+					i++
+				}
+				return nil
+			})
 			return nil
 		})
-		return nil
-	})
 
-	return setKeys
+		assetKeysCache[strSetName] = setKeys
+		return setKeys
+	}
 }
 
 func GetLengthOfIndex() int {
