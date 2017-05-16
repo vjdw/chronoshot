@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
@@ -80,6 +81,52 @@ func getAssetKeysHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func getSetArchiveHandler(w http.ResponseWriter, r *http.Request) {
+	setName := r.URL.Query().Get("set")
+	if setName == "" {
+		setName = "all"
+	}
+	assetsInSet := db.GetAllAssetKeys([]byte(setName))
+
+	var buf bytes.Buffer
+	//	writer := bufio.NewWriter(&buf)
+	archive := zip.NewWriter(&buf) //writer)
+	defer archive.Close()
+	for _, assetKey := range assetsInSet {
+		assetPath := db.GetAssetPath([]byte(assetKey))
+
+		file, err := os.Open(string(assetPath))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer file.Close()
+
+		info, err := file.Stat()
+		if err != nil {
+			log.Fatal(err)
+		}
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			log.Fatal(err)
+		}
+		header.Method = zip.Deflate
+		writer, err := archive.CreateHeader(header)
+		if err != nil {
+			log.Fatal(err)
+		}
+		_, err = io.Copy(writer, file)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	archive.Close()
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Length", strconv.Itoa(len(buf.Bytes())))
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		log.Println("unable to write response.")
+	}
+}
 func getAssetHandler(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("id")
 
@@ -365,6 +412,7 @@ func main() {
 	http.HandleFunc("/getAsset/", getAssetHandler)
 	http.HandleFunc("/getAssetCount/", getAssetCountHandler)
 	http.HandleFunc("/getAssetKeys/", getAssetKeysHandler)
+	http.HandleFunc("/getSetArchive/", getSetArchiveHandler)
 	http.HandleFunc("/select/", selectHandler)
 	go http.ListenAndServe(":8080", nil)
 	fmt.Println("Webserver ready.")
