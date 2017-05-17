@@ -88,45 +88,29 @@ func getSetArchiveHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	assetsInSet := db.GetAllAssetKeys([]byte(setName))
 
-	var buf bytes.Buffer
-	//	writer := bufio.NewWriter(&buf)
-	archive := zip.NewWriter(&buf) //writer)
-	defer archive.Close()
+	w.Header().Set("Content-Type", "application/zip")
+	zipWriter := zip.NewWriter(w)
+	defer zipWriter.Close()
 	for _, assetKey := range assetsInSet {
 		assetPath := db.GetAssetPath([]byte(assetKey))
 
 		file, err := os.Open(string(assetPath))
-		if err != nil {
-			log.Fatal(err)
-		}
+		check(err)
 		defer file.Close()
 
 		info, err := file.Stat()
-		if err != nil {
-			log.Fatal(err)
-		}
+		check(err)
 		header, err := zip.FileInfoHeader(info)
-		if err != nil {
-			log.Fatal(err)
-		}
+		check(err)
 		header.Method = zip.Deflate
-		writer, err := archive.CreateHeader(header)
-		if err != nil {
-			log.Fatal(err)
-		}
-		_, err = io.Copy(writer, file)
-		if err != nil {
-			log.Fatal(err)
-		}
+		headerWriter, err := zipWriter.CreateHeader(header)
+		check(err)
+		_, err = io.Copy(headerWriter, file)
+		check(err)
 	}
-
-	archive.Close()
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Length", strconv.Itoa(len(buf.Bytes())))
-	if _, err := w.Write(buf.Bytes()); err != nil {
-		log.Println("unable to write response.")
-	}
+	zipWriter.Close()
 }
+
 func getAssetHandler(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("id")
 
@@ -420,10 +404,11 @@ func main() {
 	if err := filepath.Walk(dir, processPhoto); err != nil {
 		log.Fatal(err)
 	}
-	// Flush out final workers.
+	// Flush out final workers...
 	for i := 0; i < cap(rateLimiter); i++ {
 		rateLimiter <- true
 	}
+	// ...and free up rateLimiter for more work.
 	for i := 0; i < cap(rateLimiter); i++ {
 		<-rateLimiter
 	}
