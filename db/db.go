@@ -35,7 +35,7 @@ type selection struct {
 var chanPutAsset = make(chan assetKvp)
 var chanPutSelection = make(chan selection)
 
-var assetKeysCache = make(map[string][]string)
+var assetKeysCache = make(map[string][]Asset)
 
 func Init() {
 	db, err := bolt.Open("chronoshot.db", 0777, nil)
@@ -176,7 +176,7 @@ func putAsset(kvp assetKvp) {
 		log.Fatal(err)
 	}
 
-	assetKeysCache = make(map[string][]string)
+	assetKeysCache = make(map[string][]Asset)
 }
 
 func PutSelection(assetKey []byte, isSelected bool) {
@@ -386,7 +386,12 @@ func GetAssetPath(key []byte) []byte {
 	return assetValueCopy
 }
 
-func GetAllAssetKeys(setName []byte) []string {
+type Asset struct {
+	AssetKey string
+	DateTime time.Time
+}
+
+func GetAllAssetKeys(setName []byte) []Asset {
 	strSetName := string(setName)
 	cachedAssetKeys, ok := assetKeysCache[strSetName]
 
@@ -400,7 +405,7 @@ func GetAllAssetKeys(setName []byte) []string {
 		defer db.Close()
 
 		setCount, err := getLengthOfBucket(db, string(setName))
-		setKeys := make([]string, setCount)
+		setKeys := make([]Asset, setCount)
 
 		db.View(func(tx *bolt.Tx) error {
 			bAssets := tx.Bucket([]byte("assets"))
@@ -414,7 +419,7 @@ func GetAllAssetKeys(setName []byte) []string {
 					log.Fatal(err)
 				}
 				if bSet.Get(info.KeyHash) != nil {
-					setKeys[setCount-i] = string(info.KeyHash)
+					setKeys[setCount-i] = Asset{string(info.KeyHash), info.DateTime}
 					i++
 				}
 				return nil

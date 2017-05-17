@@ -277,8 +277,8 @@
 
         modal.assetIndex = modal.assetIndex + (moveForwards ? 1 : -1);
 
-        modal.imgNext.src = "/getAsset/?id=" + assetKeys[modal.assetIndex+1];
-        modal.imgPrevious.src = "/getAsset/?id=" + assetKeys[modal.assetIndex-1];
+        modal.imgNext.src = "/getAsset/?id=" + assetKeys[modal.assetIndex+1].AssetKey;
+        modal.imgPrevious.src = "/getAsset/?id=" + assetKeys[modal.assetIndex-1].AssetKey;
 
         updateModalDetails(modal.assetIndex);
       }
@@ -302,7 +302,7 @@
       }
 
       function updateModalDetails(assetIndex) {
-        var assetKey = assetKeys[assetIndex];
+        var assetKey = assetKeys[assetIndex].AssetKey;
 
         (function (assetKey) {
                 fetch('/getExifDateTime/?id='+assetKey).then(function (response) {
@@ -336,7 +336,7 @@
           itemHeight: 240,
           totalRows: totalRowCount,
           generatorFn: function(row) {
-            visibleImgKey = assetKeys[row*totalColumnCount];
+            visibleImgKey = assetKeys[row*totalColumnCount].AssetKey;
             var divGridRow = document.createElement("div");
             divGridRow.className = "divGridRow"
 
@@ -351,7 +351,7 @@
               divGridRow.appendChild(divGridItem);
 
               var assetIndex = ((row * totalColumnCount) + column);
-              var assetKey = assetKeys[assetIndex];
+              var assetKey = assetKeys[assetIndex].AssetKey;
 
               // The image thumbnail.
               var imgThumbnail = document.createElement("img");
@@ -362,15 +362,15 @@
               imgThumbnail.onclick = function(assetIndex) {
                 return function() {
                   modal.assetIndex = assetIndex;
-                  var assetKey = assetKeys[assetIndex];
+                  var assetKey = assetKeys[assetIndex].AssetKey;
                   modal.divModal.style.display = "block";
                   modal.imgCurrent.src = "/getAsset/?id=" + assetKey;
                   // Try to cache the next images
                   if (assetIndex < (totalAssetCount-1)) {
-                    modal.imgNext.src = "/getAsset/?id=" + assetKeys[assetIndex+1];
+                    modal.imgNext.src = "/getAsset/?id=" + assetKeys[assetIndex+1].AssetKey;
                   }
                   if (assetIndex > 0) {
-                    modal.imgPrevious.src = "/getAsset/?id=" + assetKeys[assetIndex-1];
+                    modal.imgPrevious.src = "/getAsset/?id=" + assetKeys[assetIndex-1].AssetKey;
                   }
 
                   updateModalDetails(assetIndex);
@@ -381,19 +381,19 @@
               // The exif datetime element.
               var pExifDateTime = document.createElement("p");
               pExifDateTime.className = "pExifDateTime";
-              pExifDateTime.innerText = "...";
+              pExifDateTime.innerText = assetKeys[assetIndex].DateTime;
               divGridItem.appendChild(pExifDateTime);
-              (async function (pExifDateTime, assetKey, divGridRow) {
-                // Avoid calling getExifDateTime for every row that whizzes by.
-                await sleep(750);
-                if (document.body.contains(divGridRow)) {
-                  fetch('/getExifDateTime/?id='+assetKey).then(function (response) {
-                    response.json().then(function(result) {
-                      pExifDateTime.innerText = result.datetime;
-                    });
-                  });
-                }
-              })(pExifDateTime, assetKey, divGridRow);
+            //   (async function (pExifDateTime, assetKey, divGridRow) {
+            //     // Avoid calling getExifDateTime for every row that whizzes by.
+            //     await sleep(750);
+            //     if (document.body.contains(divGridRow)) {
+            //       fetch('/getExifDateTime/?id='+assetKey).then(function (response) {
+            //         response.json().then(function(result) {
+            //           pExifDateTime.innerText = result.datetime;
+            //         });
+            //       });
+            //     }
+            //   })(pExifDateTime, assetKey, divGridRow);
             }
             return divGridRow;
           }
@@ -416,7 +416,7 @@
         var span = document.getElementsByClassName("select")[0];
         span.onclick = function() {
           modal.assetIsSelected = !modal.assetIsSelected;
-          var assetKey = assetKeys[modal.assetIndex];
+          var assetKey = assetKeys[modal.assetIndex].AssetKey;
 
           fetch("/select/", {
             method: 'POST',

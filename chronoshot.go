@@ -58,9 +58,9 @@ func getAssetCountHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // xyzzy move to file
-type asset struct {
-	AssetKey string
-}
+// type asset struct {
+// 	AssetKey string
+// }
 
 func getAssetKeysHandler(w http.ResponseWriter, r *http.Request) {
 	setName := r.URL.Query().Get("set")
@@ -92,7 +92,7 @@ func getSetArchiveHandler(w http.ResponseWriter, r *http.Request) {
 	zipWriter := zip.NewWriter(w)
 	defer zipWriter.Close()
 	for _, assetKey := range assetsInSet {
-		assetPath := db.GetAssetPath([]byte(assetKey))
+		assetPath := db.GetAssetPath([]byte(assetKey.AssetKey))
 
 		file, err := os.Open(string(assetPath))
 		check(err)
