@@ -1,13 +1,17 @@
 <html>
   <head>
     <script type="text/javascript" src="./vlist.js"></script>
+    <script type="text/javascript" src="./moment.js"></script>
+    <script type="text/javascript" src="./pikaday.js"></script>
+    <link rel="stylesheet" href="./pikaday.css">
     <style>
       body {
         margin: 0px;
         padding: 0px;
         border: 0px;
         overflow: hidden;
-        background: gainsboro;
+        /*background: gainsboro;*/
+        background: #1d1d1d
       }
 
       #divMain {
@@ -16,6 +20,27 @@
 
       #divMain > div {
         display: inline;
+      }
+
+      #divScrollPosition {
+        position: absolute;
+        top: 20px;
+        left: 15px;
+        z-index: 1000;
+      }
+
+      #divScrollPosition > #datepicker {
+        width: 90px;
+        opacity: 50%;
+        margin: auto;
+        display: block;
+      }
+
+      input[type="text"] {
+        margin: 0.5em 0 3em 0;
+        padding: 0.5em;
+        background: #ffffff;
+        opacity: 0.75;
       }
 
       .divGridItem
@@ -59,7 +84,6 @@
           display: none; /* Hidden by default */
           position: fixed; /* Stay in place */
           z-index: 1; /* Sit on top */
-          /*padding-top: 100px;  Location of the box */
           left: 0;
           top: 0;
           width: 100%; /* Full width */
@@ -154,7 +178,6 @@
           right: 35px;
 
           transition: 0.3s;
-          /*background:rgba(251,251,251,0.5);*/
           text-align:center;
           font: bold 18px Helvetica, Sans-Serif;
           background: rgba(0, 0, 0, 0.7);
@@ -212,11 +235,10 @@
       <div id="divDownload" class="download">download</div>
     </div>
 
-    <div id="divScrollPosition">
-      <span id="spanDateTime"></span>
-    </div>
-
     <div id="divMain">
+      <div id="divScrollPosition">
+        <input type="text" id="datepicker">
+      </div>
       <!--<div id="divGrid"/>-->
     </div>
 
@@ -231,9 +253,7 @@
       var assetKeys = [];
       var setName = 'all';
 
-      // The thumbnail most recently loaded from server,
-      // only for an estimate of currently visible datetime.
-      var visibleImgKey = ""
+      var divScrollPosition = document.getElementById('divScrollPosition');
 
       var modal = {
         assetIndex: -1,
@@ -251,6 +271,7 @@
             totalAssetCount = assetKeys.length;
             totalRowCount = totalAssetCount / totalColumnCount; 
 
+            initialiseDatePicker();
             configureVirtualList();
             initialiseModalButtons();
             updateDateTimeBanner();
@@ -283,22 +304,24 @@
         updateModalDetails(modal.assetIndex);
       }
 
-      var previousOnScroll = Date.now();
+      var inScrollHandler = false;
       function onScroll(e) {
-        var now = Date.now();
-        if (now - previousOnScroll > 250) {
-          updateDateTimeBanner();
-          previousOnScroll = now;
-        }
+        inScrollHandler = true;
+        updateDateTimeBanner();
+        inScrollHandler = false;
       }
 
       function updateDateTimeBanner() {
-        fetch('/getExifDateTime/?id='+visibleImgKey).then(function (response) {
-          response.json().then(function(result) {
-            var spanDateTime = document.getElementById('spanDateTime');
-            spanDateTime.innerText = result.datetime;
-          });
-        });
+        var currentRow = parseInt(list.container.scrollTop / list.itemHeight);
+        var currentDateTime = assetKeys[currentRow*totalColumnCount].DateTime
+        datePicker.setDate(currentDateTime);
+      }
+
+      function scrollToDate(dateToScrollTo) {
+        var indexToScrollTo = assetKeys.findIndex(_ => moment.utc(_.DateTime).isSameOrBefore(dateToScrollTo));
+        var rowToScrollTo = (indexToScrollTo / totalColumnCount);
+        rowToScrollTo -= 2; // try to centre it a bit.
+        list.container.scrollTop = rowToScrollTo * list.itemHeight;
       }
 
       function updateModalDetails(assetIndex) {
@@ -329,14 +352,14 @@
               })(assetKey);
       }
 
+      var list;
       function configureVirtualList() {
-        var list = new VirtualList({
+        list = new VirtualList({
           w: window.innerWidth,
           h: window.innerHeight,
           itemHeight: 240,
           totalRows: totalRowCount,
           generatorFn: function(row) {
-            visibleImgKey = assetKeys[row*totalColumnCount].AssetKey;
             var divGridRow = document.createElement("div");
             divGridRow.className = "divGridRow"
 
@@ -373,6 +396,8 @@
                     modal.imgPrevious.src = "/getAsset/?id=" + assetKeys[assetIndex-1].AssetKey;
                   }
 
+                  divScrollPosition.style.display = "none";
+
                   updateModalDetails(assetIndex);
                 };
               }(assetIndex);
@@ -383,17 +408,6 @@
               pExifDateTime.className = "pExifDateTime";
               pExifDateTime.innerText = assetKeys[assetIndex].DateTime;
               divGridItem.appendChild(pExifDateTime);
-            //   (async function (pExifDateTime, assetKey, divGridRow) {
-            //     // Avoid calling getExifDateTime for every row that whizzes by.
-            //     await sleep(750);
-            //     if (document.body.contains(divGridRow)) {
-            //       fetch('/getExifDateTime/?id='+assetKey).then(function (response) {
-            //         response.json().then(function(result) {
-            //           pExifDateTime.innerText = result.datetime;
-            //         });
-            //       });
-            //     }
-            //   })(pExifDateTime, assetKey, divGridRow);
             }
             return divGridRow;
           }
@@ -410,6 +424,7 @@
         var span = document.getElementsByClassName("close")[0];
         span.onclick = function() {
           modal.divModal.style.display = "none";
+          divScrollPosition.style.display = "inline";
         }
 
         // Get the <span> element that selects a photo
@@ -425,6 +440,23 @@
           });
           updateModalDetails(modal.assetIndex);
         }
+      }
+
+      var datePicker;
+      function initialiseDatePicker() {
+        datePicker = new Pikaday(
+        {
+            field: document.getElementById('datepicker'),
+            firstDay: 1,
+            minDate: new Date(2000, 01, 01),
+            maxDate: new Date(2099, 12, 31),
+            yearRange: [2000,2099],
+            onSelect: function() {
+              if (!inScrollHandler) {
+                scrollToDate(this.getMoment())
+              }
+            }
+        });
       }
 
       // xyzzy move to helpers.js?
