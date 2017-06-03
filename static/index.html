@@ -250,7 +250,7 @@
       var totalColumnCount = Math.floor((window.innerWidth - (2 * divGridItemPadding)) / thumbnailOuterSize);
       var leftPaddingToCentraliseGrid = (window.innerWidth - (totalColumnCount * thumbnailOuterSize) - (2 * divGridItemPadding)) / 2;
       var totalRowCount = 0;
-      var assetKeys = [];
+      var assetInfos = [];
       var setName = 'all';
 
       var divScrollPosition = document.getElementById('divScrollPosition');
@@ -265,10 +265,10 @@
       };
 
       function initialise(setName) {
-        fetch('/getAssetKeys/?set='+setName).then(function (response) {
-          response.json().then(function(allAssets) {
-            assetKeys = allAssets;
-            totalAssetCount = assetKeys.length;
+        fetch('/getAssetInfos/?set='+setName).then(function (response) {
+          response.json().then(function(allAssetInfos) {
+            assetInfos = allAssetInfos;
+            totalAssetCount = assetInfos.length;
             totalRowCount = totalAssetCount / totalColumnCount; 
 
             initialiseDatePicker();
@@ -298,8 +298,8 @@
 
         modal.assetIndex = modal.assetIndex + (moveForwards ? 1 : -1);
 
-        modal.imgNext.src = "/getAsset/?id=" + assetKeys[modal.assetIndex+1].AssetKey;
-        modal.imgPrevious.src = "/getAsset/?id=" + assetKeys[modal.assetIndex-1].AssetKey;
+        modal.imgNext.src = "/getAsset/?id=" + assetInfos[modal.assetIndex+1].AssetKey;
+        modal.imgPrevious.src = "/getAsset/?id=" + assetInfos[modal.assetIndex-1].AssetKey;
 
         updateModalDetails(modal.assetIndex);
       }
@@ -313,19 +313,19 @@
 
       function updateDateTimeBanner() {
         var currentRow = parseInt(list.container.scrollTop / list.itemHeight);
-        var currentDateTime = assetKeys[currentRow*totalColumnCount].DateTime
+        var currentDateTime = assetInfos[currentRow*totalColumnCount].DateTime
         datePicker.setDate(currentDateTime);
       }
 
       function scrollToDate(dateToScrollTo) {
-        var indexToScrollTo = assetKeys.findIndex(_ => moment.utc(_.DateTime).isSameOrBefore(dateToScrollTo));
+        var indexToScrollTo = assetInfos.findIndex(_ => moment.utc(_.DateTime).isSameOrBefore(dateToScrollTo));
         var rowToScrollTo = (indexToScrollTo / totalColumnCount);
         rowToScrollTo -= 2; // try to centre it a bit.
         list.container.scrollTop = rowToScrollTo * list.itemHeight;
       }
 
       function updateModalDetails(assetIndex) {
-        var assetKey = assetKeys[assetIndex].AssetKey;
+        var assetKey = assetInfos[assetIndex].AssetKey;
 
         (function (assetKey) {
                 fetch('/getExifDateTime/?id='+assetKey).then(function (response) {
@@ -374,40 +374,42 @@
               divGridRow.appendChild(divGridItem);
 
               var assetIndex = ((row * totalColumnCount) + column);
-              var assetKey = assetKeys[assetIndex].AssetKey;
+              var assetInfo = assetInfos[assetIndex]
+              if (assetInfo) {
+                var assetKey = assetInfo.AssetKey;
 
-              // The image thumbnail.
-              var imgThumbnail = document.createElement("img");
-              imgThumbnail.src = "/getThumbnail/?id=" + assetKey;
-              imgThumbnail.className = "imgThumbnail"
-              imgThumbnail.width = thumbnailSize;
-              imgThumbnail.height = thumbnailSize;
-              imgThumbnail.onclick = function(assetIndex) {
-                return function() {
-                  modal.assetIndex = assetIndex;
-                  var assetKey = assetKeys[assetIndex].AssetKey;
-                  modal.divModal.style.display = "block";
-                  modal.imgCurrent.src = "/getAsset/?id=" + assetKey;
-                  // Try to cache the next images
-                  if (assetIndex < (totalAssetCount-1)) {
-                    modal.imgNext.src = "/getAsset/?id=" + assetKeys[assetIndex+1].AssetKey;
-                  }
-                  if (assetIndex > 0) {
-                    modal.imgPrevious.src = "/getAsset/?id=" + assetKeys[assetIndex-1].AssetKey;
-                  }
+                // The image thumbnail.
+                var imgThumbnail = document.createElement("img");
+                imgThumbnail.src = "/getThumbnail/?id=" + assetKey;
+                imgThumbnail.className = "imgThumbnail"
+                imgThumbnail.width = thumbnailSize;
+                imgThumbnail.height = thumbnailSize;
+                imgThumbnail.onclick = function(assetIndex) {
+                  return function() {
+                    modal.assetIndex = assetIndex;
+                    var assetKey = assetInfos[assetIndex].AssetKey;
+                    modal.divModal.style.display = "block";
+                    modal.imgCurrent.src = "/getAsset/?id=" + assetKey;
+                    divScrollPosition.style.display = "none";
+                    updateModalDetails(assetIndex);
+                    
+                    // Try to cache the next images
+                    if (assetIndex < (totalAssetCount-1)) {
+                      modal.imgNext.src = "/getAsset/?id=" + assetInfos[assetIndex+1].AssetKey;
+                    }
+                    if (assetIndex > 0) {
+                      modal.imgPrevious.src = "/getAsset/?id=" + assetInfos[assetIndex-1].AssetKey;
+                    }
+                  };
+                }(assetIndex);
+                divGridItem.appendChild(imgThumbnail);
 
-                  divScrollPosition.style.display = "none";
-
-                  updateModalDetails(assetIndex);
-                };
-              }(assetIndex);
-              divGridItem.appendChild(imgThumbnail);
-
-              // The exif datetime element.
-              var pExifDateTime = document.createElement("p");
-              pExifDateTime.className = "pExifDateTime";
-              pExifDateTime.innerText = assetKeys[assetIndex].DateTime;
-              divGridItem.appendChild(pExifDateTime);
+                // The exif datetime element.
+                var pExifDateTime = document.createElement("p");
+                pExifDateTime.className = "pExifDateTime";
+                pExifDateTime.innerText = assetInfos[assetIndex].DateTime;
+                divGridItem.appendChild(pExifDateTime);
+              }
             }
             return divGridRow;
           }
@@ -431,7 +433,7 @@
         var span = document.getElementsByClassName("select")[0];
         span.onclick = function() {
           modal.assetIsSelected = !modal.assetIsSelected;
-          var assetKey = assetKeys[modal.assetIndex].AssetKey;
+          var assetKey = assetInfos[modal.assetIndex].AssetKey;
 
           fetch("/select/", {
             method: 'POST',
@@ -479,7 +481,7 @@
       }
 
       setName = getParameterByName('set');
-      if (setName === '')
+      if (!setName) 
         setName = 'all';
       initialise(setName);
 

@@ -62,7 +62,7 @@ func getAssetCountHandler(w http.ResponseWriter, r *http.Request) {
 // 	AssetKey string
 // }
 
-func getAssetKeysHandler(w http.ResponseWriter, r *http.Request) {
+func getAssetInfosHandler(w http.ResponseWriter, r *http.Request) {
 	setName := r.URL.Query().Get("set")
 	if setName == "" {
 		setName = "all"
@@ -395,7 +395,7 @@ func main() {
 	http.HandleFunc("/getExifDateTime/", getExifDateTimeHandler)
 	http.HandleFunc("/getAsset/", getAssetHandler)
 	http.HandleFunc("/getAssetCount/", getAssetCountHandler)
-	http.HandleFunc("/getAssetKeys/", getAssetKeysHandler)
+	http.HandleFunc("/getAssetInfos/", getAssetInfosHandler)
 	http.HandleFunc("/getSetArchive/", getSetArchiveHandler)
 	http.HandleFunc("/select/", selectHandler)
 	go http.ListenAndServe(":8080", nil)
