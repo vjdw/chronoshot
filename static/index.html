@@ -29,11 +29,11 @@
         z-index: 1000;
       }
 
-      #divScrollPosition > #datepicker {
+      #divScrollPosition > * {
         width: 90px;
         opacity: 50%;
         margin: auto;
-        display: block;
+        display: inline;
       }
 
       input[type="text"] {
@@ -238,6 +238,11 @@
     <div id="divMain">
       <div id="divScrollPosition">
         <input type="text" id="datepicker">
+        <select onchange="ApplySetSelection(this)">
+          <option value="all">All</option>
+          <option value="selections">Favourites</option>
+        </select>
+        <button type="submit" onclick="GetCurrentSetArchive();">Zip</button>
       </div>
       <!--<div id="divGrid"/>-->
     </div>
@@ -264,17 +269,23 @@
         imgNext: document.getElementById("imgModal3"),
       };
 
-      function initialise(setName) {
+      var firstInitDone = false;
+      function initialise(set) {
+        setName = set
         fetch('/getAssetInfos/?set='+setName).then(function (response) {
           response.json().then(function(allAssetInfos) {
             assetInfos = allAssetInfos;
             totalAssetCount = assetInfos.length;
             totalRowCount = totalAssetCount / totalColumnCount; 
 
-            initialiseDatePicker();
             configureVirtualList();
-            initialiseModalButtons();
-            updateDateTimeBanner();
+
+            if (!firstInitDone) {
+              initialiseDatePicker();
+              initialiseModalButtons();
+              updateDateTimeBanner();
+              firstInitDone = true;
+            }
           });
         });
       }
@@ -354,6 +365,11 @@
 
       var list;
       function configureVirtualList() {
+        var divMain = document.getElementById('divMain');
+        if (list) {
+          divMain.removeChild(list.container);
+        }
+        
         list = new VirtualList({
           w: window.innerWidth,
           h: window.innerHeight,
@@ -414,7 +430,6 @@
             return divGridRow;
           }
         });
-        var divMain = document.getElementById('divMain');
         divMain.appendChild(list.container);
         list.container.addEventListener('scroll', onScroll);
       }
@@ -459,6 +474,15 @@
               }
             }
         });
+      }
+
+      function ApplySetSelection(ddlSelectedSet) {
+        var selectedValue = ddlSelectedSet.value;
+        initialise(selectedValue);
+      }
+
+      function GetCurrentSetArchive() {
+        window.open('/getSetArchive/?set=' + setName);
       }
 
       // xyzzy move to helpers.js?

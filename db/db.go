@@ -212,6 +212,8 @@ func putSelection(s selection) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	assetKeysCache = make(map[string][]Asset)
 }
 
 func serialise(key interface{}) ([]byte, error) {
