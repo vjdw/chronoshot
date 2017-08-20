@@ -232,7 +232,9 @@ func watchDirectory(path string) {
 	// Set up a watchpoint listening for events within a directory tree rooted
 	// at current working directory. Dispatch remove events to c.
 	recursivePath := strings.Join([]string{path, "/..."}, "")
-	if err := notify.Watch(recursivePath, c, notify.Create|notify.Rename|notify.Remove); err != nil {
+
+	// TODO: Think about notify.Rename and notify.Remove
+	if err := notify.Watch(recursivePath, c, notify.InCloseWrite); err != nil {
 		log.Fatal(err)
 	}
 	defer notify.Stop(c)
