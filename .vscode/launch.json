@@ -9,7 +9,7 @@
             "remotePath": "",
             "port": 8080,
             "host": "localhost",
-            "program": "${workspaceRoot}",
+            "program": "${workspaceRoot}/cmd/chronoshot",
             "env": {},
             "args": [],
             "showLog": true

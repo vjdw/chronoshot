@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/disintegration/imaging"
-	"github.com/vjdw/chronoshot/db"
+	"github.com/vjdw/chronoshot/pkg/db"
 
 	"github.com/rjeczalik/notify"
 
