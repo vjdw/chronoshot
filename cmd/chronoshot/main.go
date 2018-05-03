@@ -37,7 +37,7 @@ func check(e error) {
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
-	root := "static"
+	root := "../../static"
 	switch r.Method {
 	case "GET":
 		if r.URL.Path == "" || r.URL.Path == "/" {
