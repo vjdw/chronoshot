@@ -44,7 +44,7 @@ function VirtualList(config) {
 
   var screenItemsLen = Math.ceil(config.h / itemHeight);
   // Cache 4 times the number of items that fit in the container viewport
-  this.cachedItemsLen = screenItemsLen * 3;
+  this.cachedItemsLen = screenItemsLen * 4;
   this._renderChunk(this.container, 0);
 
   var self = this;
