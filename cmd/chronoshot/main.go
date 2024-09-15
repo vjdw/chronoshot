@@ -381,8 +381,9 @@ func main() {
 	go logChannelMonitor()
 	db.Init()
 
-	dir := "/home/vin/Desktop"
+	//dir := "/home/vin/Desktop"
 	//dir := "/media/data/photos"
+	dir := "/srv/data/photos"
 	//dir := "/home/vin/go/src/github.com/h2non/bimg/fixtures"
 	if len(os.Args) > 1 {
 		dir = os.Args[1]
