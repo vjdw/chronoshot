@@ -260,7 +260,7 @@ func processPhoto(path string, info os.FileInfo, err error) error {
 	go func(string) {
 		defer func() { <-rateLimiter }()
 		lowerPath := strings.ToLower(path)
-		if strings.HasSuffix(lowerPath, "jpg") || strings.HasSuffix(lowerPath, "jpeg") {
+		if strings.HasSuffix(lowerPath, ".jpg") || strings.HasSuffix(lowerPath, ".jpeg") {
 
 			if db.FilePathAdded([]byte(path)) {
 				fmt.Printf("Already in database: %s\n", path)
